@@ -1,0 +1,39 @@
+version: '3'
+
+services: 
+  db:
+    image: postgres:13.1
+    environment:
+      - POSTGRES_PASSWORD=postgres
+
+  memcached:
+    image: memcached
+
+  redis1:
+    image: redis
+  redis2:
+    image: redis
+
+  application:
+    build:
+      context: .
+    image: "socialsirius/ipg_demo:${VERSION-dev}"
+    command: bash -c "python main.py"
+    environment:
+      - TEAMCITY_VERSION
+      - MEMCACHED=memcached
+      - REDIS=redis://redis1,redis://redis2
+      - DATABASE_HOST=db
+      - DATABASE_USER=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_PASSWORD=postgres
+      - LOGLEVEL=DEBUG
+    volumes:
+      - ./app:/app
+    ports:
+      - "80:80"
+    depends_on:
+      - db
+      - memcached
+      - redis1
+      - redis2

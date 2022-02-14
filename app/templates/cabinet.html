@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+    <link rel="icon" type="image/png" href="/static/icons/favicon.png"/>
+    <link href="{{ static.styles }}" rel="stylesheet">
+    <script src="{{ static.vue }}"></script>
+    <script src="{{ static.axios }}"></script>
+    <script src="{{ static.jquery }}"></script>
+</head>
+<body>
+    <!-- Navigation-->
+    <nav class="navbar navbar-expand-lg navbar-light fixed-top shadow-sm" id="mainNav">
+        <div class="container px-5">
+            <img src="{{ url_for('static', path='/icons/logo.png') }}" style="max-width: 70px; max-height:70px;">
+            <a class="navbar-brand fw-bold" href="#">Demo for {{title}}</a>
+            <button aria-controls="navbarResponsive" aria-expanded="false" aria-label="Toggle navigation" class="navbar-toggler"
+                    data-bs-target="#navbarResponsive" data-bs-toggle="collapse" type="button">
+                Menu
+                <i class="bi-list"></i>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarResponsive">
+                <!--
+                <ul class="navbar-nav ms-auto me-4 my-3 my-lg-0">
+                    <li class="nav-item"><a class="nav-link me-lg-3" href="{{features}}" target="_blank">Features</a></li>
+                    <li class="nav-item"><a class="nav-link me-lg-3" href="{{download}}" target="_blank">Download</a></li>
+                    {% if current_user %}
+                        <li class="nav-item"><a class="nav-link me-lg-3" href="{{ base_url }}/logout">Logout [{{ current_user.username }}]</a></li>
+                    {% endif %}
+                </ul>
+                -->
+                <!--
+                <button class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-target="#feedbackModal"
+                        data-bs-toggle="modal">
+                            <span class="d-flex align-items-center">
+                                <i class="bi-chat-text-fill me-2"></i>
+                                <span class="small">Send Feedback</span>
+                            </span>
+                </button>
+                -->
+            </div>
+        </div>
+    </nav>
+
+    <!-- Mashead header-->
+    <header class="masthead" id="app">
+
+        <!-- Create Wallet Modal -------->
+        <div class="modal" id="modal-window" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
+          <div class="modal-dialog modal-md" role="document" style="margin-top:10%;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="text-primary modal-title" >[[modal_window.title]]</h5>
+              </div>
+              <div class="modal-body">
+                  <p>[[modal_window.text]]</p>
+                  <form class="form-horizontal" method="post" action="#">
+                    <h5 v-if="modal_window.form.error" class="text-danger">[[modal_window.form.error]]</h5>
+                    <div v-for="field in modal_window.form.fields" class="form-group" style="margin-bottom: 5px;">
+                        <label class="fw-light" v-bind:for="field.id" class="cols-sm-2 control-label">[[field.label]]</label>
+                        <div class="cols-sm-10">
+                            <div class="input-group">
+                                <input
+                                        v-model="field.value" type="text" class="form-control"
+                                        v-bind:name="field.id" v-bind:id="field.id"
+                                        v-bind:placeholder="field.placeholder"
+                                />
+                            </div>
+                        </div>
+                    </div>
+                  </form>
+                  <div class="row" style="margin-bottom: 10px;"></div>
+                  <button v-if="modal_window.btn_cancel.enable" @click.prevent="btn_modal_cancel" class="btn btn-primary">[[modal_window.btn_cancel.caption]]</button>
+                  <button v-if="modal_window.btn_accept.enable" @click.prevent="btn_modal_accept" class="btn btn-danger" style="float: right;">Create</button>
+                  <img v-if="modal_window.running" src="/static/loading.gif" style="float: right;height: 40px; width: 40px;"/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="container px-5">
+            <div class="row gx-5 align-items-lg-start">
+
+                    <div class="col-lg-5">
+                        <div class="row justify-content-center">
+                            <div class="col-md-12">
+                                <div class="card">
+                                    <div class="card-header">My Identity</div>
+                                    <div class="card-body">
+                                        <div class="card" style="margin-bottom: 5px;">
+                                          <div class="card-body">
+                                            <h5 class="card-title">did:LnXR1rPnncTPZvRdmJKhJQ</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">{{title}} Avatar[1]</h6>
+                                            <a href="#" class="card-link">Invitation</a>
+                                          </div>
+                                        </div>
+
+                                        <div class="card" style="margin-bottom: 5px;">
+                                          <div class="card-body">
+                                            <h5 class="card-title">did:LnXR1rPnncTPZvRdmJKhJQ</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">{{title}} Avatar[2]</h6>
+                                            <a href="#" class="card-link">Invitation</a>
+                                          </div>
+                                        </div>
+
+                                        <div class="d-flex justify-content-center">
+                                            <button @click="" class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-toggle="modal" title="Add Identity">
+                                                <span class="d-flex align-items-center">
+                                                    <span class="small">+</span>
+                                                </span>
+                                            </button>
+                                        </div>
+
+                                        <div class="card" style="margin-bottom: 5px;">
+                                          <div class="card-body">
+                                            <h5 class="card-title">Credential</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">License</h6>
+                                            <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
+                                            <a href="#" class="card-link">Attributes</a>
+                                          </div>
+                                        </div>
+
+                                        <div class="card" style="margin-bottom: 5px;">
+                                          <div class="card-body">
+                                            <h5 class="card-title">Credential</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">Grant</h6>
+                                            <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
+                                            <a href="#" class="card-link">Attributes</a>
+                                          </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+
+                    <div class="col-lg-4">
+                        <div class="row justify-content-center">
+                            <div class="col-md-14">
+                                <div class="card">
+                                    <div class="card-header">Connections</div>
+                                    <div class="card-body">
+                                        2
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-3">
+                        <div class="row justify-content-center">
+                            <div class="col-md-14">
+                                <div class="card">
+                                    <div class="card-header">P2P Networks</div>
+                                    <div class="card-body">
+                                        2
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+            </div>
+        </div>
+    </header>
+</body>
+<script>
+    app = new Vue({
+        el: '#app',
+        delimiters: ['[[', ']]'],
+        data: {
+            modal_window: {
+                title: 'Test Caption',
+                text: 'Test Text',
+                btn_cancel: {
+                    enable: true,
+                    caption: 'Cancel',
+                    on_click: null
+                },
+                btn_accept: {
+                    enable: true,
+                    caption: 'Accept',
+                    on_click: null
+                },
+                running: false,
+                form: {
+                    error: 'error',
+                    fields: [
+                        {id: 'fld-1', label: 'label-1', value: 'dcs', placeholder: 'placeholder-1'},
+                        {id: 'fld-2', label: 'label-2', value: '', placeholder: 'placeholder-2'}
+                    ]
+                }
+            }
+        },
+        methods: {
+            open_modal: function(){
+                $('#modal-window').show();
+            },
+            close_modal: function(){
+                $('#modal-window').hide();
+            },
+            btn_modal_cancel: function(){
+                if (this.modal_window.btn_cancel.on_click) {
+                    this[this.modal_window.btn_cancel.on_click]();
+                }
+                else {
+                    this.close_modal();
+                }
+            },
+            btn_modal_accept: function(){
+                if (this.modal_window.btn_accept.on_click) {
+                    this[this.modal_window.btn_accept.on_click]();
+                }
+                else {
+                    this.close_modal();
+                }
+            }
+        }
+    });
+</script>
+</html>
