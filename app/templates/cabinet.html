@@ -8,6 +8,26 @@
     <script src="{{ static.vue }}"></script>
     <script src="{{ static.axios }}"></script>
     <script src="{{ static.jquery }}"></script>
+    <style>
+        div.json{
+          background-color: #1a1e21;
+          color: white;
+          margin: 0;
+          padding:0;
+        }
+
+        div.json .key {
+          color: lightgreen;
+        }
+
+        div.json > code {
+          color: lightgrey;
+        }
+
+        div.json .string {
+          color: white;
+        }
+    </style>
 </head>
 <body>
     <!-- Navigation-->
@@ -21,15 +41,13 @@
                 <i class="bi-list"></i>
             </button>
             <div class="collapse navbar-collapse" id="navbarResponsive">
-                <!--
                 <ul class="navbar-nav ms-auto me-4 my-3 my-lg-0">
+                    <!--
                     <li class="nav-item"><a class="nav-link me-lg-3" href="{{features}}" target="_blank">Features</a></li>
                     <li class="nav-item"><a class="nav-link me-lg-3" href="{{download}}" target="_blank">Download</a></li>
-                    {% if current_user %}
-                        <li class="nav-item"><a class="nav-link me-lg-3" href="{{ base_url }}/logout">Logout [{{ current_user.username }}]</a></li>
-                    {% endif %}
+                    -->
+                    <li class="nav-item btn-danger"><a class="nav-link me-lg-3" href="{{reset_link}}">Reset All data</a></li>
                 </ul>
-                -->
                 <!--
                 <button class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-target="#feedbackModal"
                         data-bs-toggle="modal">
@@ -46,7 +64,7 @@
     <!-- Mashead header-->
     <header class="masthead" id="app">
 
-        <!-- Create Wallet Modal -------->
+        <!-- Modal Window --->
         <div class="modal" id="modal-window" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
           <div class="modal-dialog modal-md" role="document" style="margin-top:10%;">
             <div class="modal-content">
@@ -54,26 +72,145 @@
                 <h5 class="text-primary modal-title" >[[modal_window.title]]</h5>
               </div>
               <div class="modal-body">
-                  <p>[[modal_window.text]]</p>
+                  <p v-if="modal_window.text">[[modal_window.text]]</p>
+                  <div v-if="modal_window.copy.enable" class="row card-body">
+                      <a class="col-2"
+                         @click.prevent="copy_to_clipboard" href="" title="Copy to Clipboard" style="float: left; cursor: pointer;"
+                      >
+                          <img src="/static/copy.svg" style="width: 20px; height: 20px; float: left; margin: 0;">
+                      </a>
+                      <p style="cursor: pointer;overflow: auto;font-size: 70%;" @click.prevent="copy_to_clipboard" v-if="modal_window.copy.link === false" class="col">[[modal_window.copy.text]]</p>
+                      <a style="cursor: pointer;overflow: auto;font-size: 70%;" @click.prevent="copy_to_clipboard" v-if="modal_window.copy.link === true" class="col">[[modal_window.copy.text]]</a>
+                  </div>
                   <form class="form-horizontal" method="post" action="#">
                     <h5 v-if="modal_window.form.error" class="text-danger">[[modal_window.form.error]]</h5>
                     <div v-for="field in modal_window.form.fields" class="form-group" style="margin-bottom: 5px;">
                         <label class="fw-light" v-bind:for="field.id" class="cols-sm-2 control-label">[[field.label]]</label>
                         <div class="cols-sm-10">
                             <div class="input-group">
-                                <input
+                                <input v-if="!field.choices"
                                         v-model="field.value" type="text" class="form-control"
                                         v-bind:name="field.id" v-bind:id="field.id"
                                         v-bind:placeholder="field.placeholder"
                                 />
+                                <select v-if="field.choices" v-model="field.value">
+                                  <option v-for="option in field.choices" v-bind:value="option.value">
+                                    [[ option.text ]]
+                                  </option>
+                                </select>
                             </div>
                         </div>
                     </div>
                   </form>
                   <div class="row" style="margin-bottom: 10px;"></div>
                   <button v-if="modal_window.btn_cancel.enable" @click.prevent="btn_modal_cancel" class="btn btn-primary">[[modal_window.btn_cancel.caption]]</button>
-                  <button v-if="modal_window.btn_accept.enable" @click.prevent="btn_modal_accept" class="btn btn-danger" style="float: right;">Create</button>
+                  <button v-if="modal_window.btn_accept.enable" @click.prevent="btn_modal_accept" class="btn btn-danger" style="float: right;">[[modal_window.btn_accept.caption]]</button>
                   <img v-if="modal_window.running" src="/static/loading.gif" style="float: right;height: 40px; width: 40px;"/>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!----- View JSON document window ---->
+        <div class="modal" id="modal-json" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
+          <div class="modal-dialog lg" role="document" style="margin-top:10%;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="text-primary modal-title" >[[modal_json.title]]</h5>
+              </div>
+              <div class="modal-body">
+                  <p v-if="modal_json.text">[[modal_json.text]]</p>
+                  <div class="json" style="font-size: 80%;">
+                        <pre><code id="json-document"></code></pre>
+                  </div>
+                  <div class="row" style="margin-bottom: 10px;"></div>
+                  <button @click.prevent="close_modal_json" class="btn btn-primary">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!----- Messaging Window --->
+        <div class="modal" id="modal-messaging" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
+          <div class="modal-dialog lg" role="document" style="margin-top:10%;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="text-primary modal-title" >[[modal_messaging.title]]</h5>
+              </div>
+              <div class="modal-body">
+                  <p v-if="modal_messaging.text">[[modal_messaging.text]]</p>
+                  <textarea readonly="readonly" style="width: 100%; min-height: 200px;overflow: auto;" id="textarea-messaging"></textarea>
+                  <div class="row" style="margin: 5px;">
+                    <input class="col-lg-8" type="text" placeholder="Enter message to send" v-model="modal_messaging.input">
+                    <button @click.prevent="send_message" class="col-lg-3 btn btn-danger">[Send]</button>
+                  </div>
+                  <button @click.prevent="close_messaging" class="btn btn-primary">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!----- Create Schema Modal  --->
+        <div class="modal" id="modal-schema" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
+          <div class="modal-dialog lg" role="document" style="margin-top:10%;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="text-primary modal-title" >[[modal_schema.title]]</h5>
+              </div>
+              <div class="modal-body">
+                  <p>[[modal_schema.text]]</p>
+                  <!-- FORM: Create Schema -->
+                  <form v-if="modal_schema.mode === 1" class="form-horizontal" method="post" action="#">
+                    <h5 v-if="modal_schema.error" class="text-danger">[[modal_schema.error]]</h5>
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label class="fw-light col-lg-2" class="cols-sm-2 control-label">Issuer</label>
+                        <select class="col-lg-8" v-if="modal_schema.choices" v-model="modal_schema.did">
+                          <option v-for="option in modal_schema.choices" v-bind:value="option.value">
+                            [[ option.text ]]
+                          </option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label class="fw-light col-lg-4" class="cols-sm-2 control-label">Schema name</label>
+                        <input class="col-lg-6" type="text" placeholder="Press schema name" v-model="modal_schema.name">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 5px;">
+                        <label class="fw-light col-lg-4" class="cols-sm-2 control-label">Schema version</label>
+                        <input class="col-lg-6" type="text" placeholder="Press schema ver" v-model="modal_schema.ver">
+                    </div>
+                    <span class="text-black-50">Attributes:</span>
+                    <table style="margin-left: 50px;">
+                        <tr v-for="(attr, index) in modal_schema.attrs" :key="attr.id">
+                            <td><button @click.prevent="remove_schema_attr(index)" class="btn btn-outline-danger btn-sm" title="Remove">-</button></td>
+                            <td><input v-model="attr.name" type="text" class="form-control form-control-sm col-6" placeholder="Enter attribute name"/></td>
+                        </tr>
+                        <tr>
+                            <td><button @click.prevent="append_schema_attr" class="btn btn-outline-primary btn-sm" title="Append">+</button></td>
+                            <td></td>
+                        </tr>
+                    </table>
+                  </form>
+                  <!-- FORM: Load Schema -->
+                  <form v-if="modal_schema.mode === 2" class="form-horizontal" method="post" action="#">
+                      <h5 v-if="modal_schema.error" class="text-danger">[[modal_schema.error]]</h5>
+                      <div class="form-group" style="margin-bottom: 5px;">
+                         <label class="fw-light col-lg-4" class="cols-sm-2 control-label">Enter Schema ID</label>
+                         <input class="col-lg-6" type="text" placeholder="xxx:2:yyy:1.0" v-model="modal_schema.name">
+                         <button style="margin-bottom: 5px;" @click.prevent="schema_loading" class="btn btn-outline-warning btn-sm">Load...</button>
+                      </div>
+                      <div class="d-flex justify-content-center" style="padding-bottom: 10px;" >
+                        <img v-if="modal_schema.loading" src="/static/loading.extra.gif" style="float: right;height: 100px; width: 100px;"/>
+                      </div>
+                      <!---  -->
+                      <span class="text-black-50">Attributes:</span>
+                      <table style="margin-left: 50px;">
+                            <tr v-for="(attr, index) in modal_schema.attrs" :key="attr.id">
+                                <td><input readonly="readonly" v-model="attr.name" type="text" class="form-control form-control-sm col-6" /></td>
+                            </tr>
+                      </table>
+                  </form>
+                  <div class="row" style="margin-bottom: 10px;"></div>
+                  <button @click.prevent="modal_schema_close" class="btn btn-primary">Close</button>
+                  <button v-if="!modal_schema.running && modal_schema.mode == 1" @click.prevent="schema_registered" class="btn btn-danger" style="float: right;">Register</button>
+                  <img v-if="modal_schema.running" src="/static/loading.gif" style="float: right;height: 40px; width: 40px;"/>
+                  <button v-if="modal_schema.attrs.length > 0 && modal_schema.mode == 2 && !modal_schema.running" @click.prevent="loaded_schema_store" class="btn btn-danger" style="float: right;">Store loaded schema</button>
               </div>
             </div>
           </div>
@@ -87,50 +224,82 @@
                         <div class="row justify-content-center">
                             <div class="col-md-12">
                                 <div class="card">
+                                    <!-----------------------------------------------------
+                                        My Identities
+                                    ------------------------------------------------------->
                                     <div class="card-header">My Identity</div>
                                     <div class="card-body">
-                                        <div class="card" style="margin-bottom: 5px;">
+                                        <!-- For loop ------>
+                                        <div v-for="identity in identities" class="card" style="margin-bottom: 5px;">
                                           <div class="card-body">
-                                            <h5 class="card-title">did:LnXR1rPnncTPZvRdmJKhJQ</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">{{title}} Avatar[1]</h6>
-                                            <a href="#" class="card-link">Invitation</a>
+                                            <h5 class="card-title">[[identity.did]]</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">[[identity.label]]</h6>
+                                            <a @click.prevent="view_invitation(identity.inv, identity.label)" href="#" class="card-link">Invitation</a>
                                           </div>
                                         </div>
 
-                                        <div class="card" style="margin-bottom: 5px;">
-                                          <div class="card-body">
-                                            <h5 class="card-title">did:LnXR1rPnncTPZvRdmJKhJQ</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">{{title}} Avatar[2]</h6>
-                                            <a href="#" class="card-link">Invitation</a>
-                                          </div>
-                                        </div>
+                                        <!--------------------------------------------
+                                            Button for adding new identity
+                                        --------------------------------------------->
 
-                                        <div class="d-flex justify-content-center">
-                                            <button @click="" class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-toggle="modal" title="Add Identity">
+                                        <div style="margin-bottom: 10px;" class="d-flex justify-content-center">
+                                            <button @click="add_identity" class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-toggle="modal" title="Add Identity">
                                                 <span class="d-flex align-items-center">
-                                                    <span class="small">+</span>
+                                                    <span class="small">+ Add new identity</span>
                                                 </span>
                                             </button>
                                         </div>
 
-                                        <div class="card" style="margin-bottom: 5px;">
-                                          <div class="card-body">
-                                            <h5 class="card-title">Credential</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">License</h6>
-                                            <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
-                                            <a href="#" class="card-link">Attributes</a>
-                                          </div>
+                                        <!--------------------------------------------
+                                            Schemas
+                                        --------------------------------------------->
+                                        <!-- Warning Message --->
+                                        <p v-if="schemas_and_cred_defs.length === 0 && identities.length > 0" style="padding: 15px; border-radius: 10px;" class="alert-warning text-lg-center">
+                                            Create/Load your first Schema
+                                        </p>
+                                        <p v-if="identities.length === 0" style="padding: 15px; border-radius: 10px;" class="alert-danger text-lg-center">
+                                            Create at least one Identity...
+                                        </p>
+                                        <p v-if="schemas_and_cred_defs.length > 0" style="padding: 15px; border-radius: 10px;" class="alert-warning text-lg-center">
+                                            Your Schemas & Cred-Defs
+                                        </p>
+                                        <!--------------------------------------------
+                                            Button for registering Schemas
+                                        --------------------------------------------->
+
+                                        <div class="d-flex justify-content-center" style="padding-bottom: 10px;" >
+                                            <button v-bind:disabled="identities.length === 0" @click="register_schema(1)" class="btn btn-secondary btn-sm rounded-pill px-3 mb-2 mb-lg-0 m-auto" data-bs-toggle="modal" title="Add Identity">
+                                                <span class="d-flex align-items-center">
+                                                    <span class="small">+ Create schema</span>
+                                                </span>
+                                            </button>
+                                            <button v-bind:disabled="identities.length === 0" @click="register_schema(2)" class="btn btn-secondary btn-sm rounded-pill px-3 mb-2 mb-lg-0 m-auto" data-bs-toggle="modal" title="Add Identity">
+                                                <span class="d-flex align-items-center">
+                                                    <span class="small">+ Load schema from Registry</span>
+                                                </span>
+                                            </button>
+                                            <div class="d-flex justify-content-center" style="padding-bottom: 10px;" >
+                                        </div>
                                         </div>
 
-                                        <div class="card" style="margin-bottom: 5px;">
+                                        <!--------------------------------------------
+                                            Schemas & Cred-Defs
+                                        --------------------------------------------->
+                                        <div v-for="schema in schemas_and_cred_defs" class="card" style="margin-bottom: 5px;">
                                           <div class="card-body">
-                                            <h5 class="card-title">Credential</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">Grant</h6>
-                                            <p class="card-text">Some quick example text to build on the card title and make up the bulk of the card's content.</p>
-                                            <a href="#" class="card-link">Attributes</a>
+                                            <h5 class="card-title">Schema "[[schema.name]]" (version: [[schema.ver]])</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">[[schema.id]]</h6>
+                                            <span class="text-primary">Attributes:</span>
+                                            <span style="margin-right: 5px;" class="btn btn-primary btn-sm" v-for="attr in schema.attrNames">[[attr]]</span>
+                                          </div>
+                                          <div class="d-flex justify-content-center" style="padding-bottom: 10px;">
+                                              <button @click="" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
+                                                <span class="d-flex align-items-center">
+                                                    <span class="small">+ Cred-Def</span>
+                                                </span>
+                                              </button>
                                           </div>
                                         </div>
-
                                     </div>
                                 </div>
                             </div>
@@ -143,10 +312,51 @@
                         <div class="row justify-content-center">
                             <div class="col-md-14">
                                 <div class="card">
+                                    <!-----------------------------------------------------
+                                        My Connections
+                                    ------------------------------------------------------->
                                     <div class="card-header">Connections</div>
                                     <div class="card-body">
-                                        2
+
+                                        <!-- Warning Message --->
+                                        <p v-if="identities.length === 0" style="padding: 15px; border-radius: 10px;" class="alert-danger text-lg-center">
+                                            Create at least one Identity to establish P2P connections with others
+                                        </p>
+
+                                        <!-- For loop ------>
+                                        <div v-for="conn in connections" class="card" style="margin-bottom: 5px;">
+                                          <div class="card-body">
+                                            <h5 class="card-title">[[conn.their.label]]</h5>
+                                            <h6 class="card-subtitle mb-2 text-muted">
+                                                <span class="text-danger" style="padding: 3px;">Their</span>did:sov:[[conn.their.did]]
+                                            </h6>
+                                              <h6 class="card-subtitle mb-2 text-muted">
+                                                  <span class="text-success" style="padding: 3px;">Mine</span>did:sov:[[conn.me.did]]
+                                              </h6>
+                                            <a @click.prevent="view_json_document('DIDDoc', conn.their.did_doc, conn.their.label)" href="#" class="card-link">DIDDoc</a>
+                                            <a @click.prevent="open_messaging('Messaging', conn.their.label, conn.their.did)" href="#" class="card-link">
+                                                Messaging
+                                                <span v-if="conn.messaging.counter>0">([[conn.messaging.counter]])</span>
+                                            </a>
+                                            <a @click.prevent="" href="#" class="card-link">Issuing</a>
+                                          </div>
+                                        </div>
                                     </div>
+
+
+
+                                    <!--------------------------------------------
+                                        Button for adding new connection
+                                    --------------------------------------------->
+
+                                    <div v-if="identities.length > 0" class="d-flex justify-content-center" style="padding-bottom: 10px;" >
+                                        <button @click="add_connection" class="btn btn-primary rounded-pill px-3 mb-2 mb-lg-0" data-bs-toggle="modal" title="Add Identity">
+                                            <span class="d-flex align-items-center">
+                                                <span class="small">+ Add new connection</span>
+                                            </span>
+                                        </button>
+                                    </div>
+
                                 </div>
                             </div>
                         </div>
@@ -169,14 +379,49 @@
         </div>
     </header>
 </body>
+
+
 <script>
+    function JSONstringify(json) {
+        if (typeof json != 'string') {
+         json = JSON.stringify(json, undefined, 2);
+        }
+        json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+            var cls = 'number';
+            if (/^"/.test(match)) {
+                if (/:$/.test(match)) {
+                    cls = 'key';
+                } else {
+                    cls = 'string';
+                }
+            } else if (/true|false/.test(match)) {
+                cls = 'boolean';
+            } else if (/null/.test(match)) {
+                cls = 'null';
+            }
+            return '<span class="' + cls + '">' + match + '</span>';
+        });
+    }
+
+    let identities = {{ identities|tojson(indent=2) }};
+    let connections = {{ connections|tojson(indent=2) }};
+    let schemas = {{ schemas|tojson(indent=2) }};
     app = new Vue({
         el: '#app',
         delimiters: ['[[', ']]'],
         data: {
+            identities: identities,
+            connections: connections,
+            schemas_and_cred_defs: schemas,
             modal_window: {
                 title: 'Test Caption',
                 text: 'Test Text',
+                copy: {
+                    enable: false,
+                    text: '',
+                    link: true
+                },
                 btn_cancel: {
                     enable: true,
                     caption: 'Cancel',
@@ -190,19 +435,106 @@
                 running: false,
                 form: {
                     error: 'error',
-                    fields: [
-                        {id: 'fld-1', label: 'label-1', value: 'dcs', placeholder: 'placeholder-1'},
-                        {id: 'fld-2', label: 'label-2', value: '', placeholder: 'placeholder-2'}
-                    ]
+                    action: 'some-action',
+                    reload_on_success: true,
+                    fields: []
                 }
+            },
+            modal_json: {
+                title: 'JSON Document',
+                text: 'Document description',
+                doc: {}
+            },
+            modal_messaging: {
+                title: 'Messaging Title',
+                text: 'Messaging text',
+                their_did: null,
+                input: null
+            },
+            modal_schema: {
+                title: 'Register SSI Schema',
+                text: 'Use schema for registering Cred-Defs later...',
+                name: '',
+                ver: '1.0',
+                did: '',
+                choices: [],
+                attrs: [],
+                error: '',
+                running: false,
+                loading: false,
+                mode: 1  // 1-Create schema' 2-Load from DKMS
             }
         },
         methods: {
+            // ====== System ===========
             open_modal: function(){
+                this.modal_window.running = false;
+                this.modal_window.form.error = '';
                 $('#modal-window').show();
             },
             close_modal: function(){
                 $('#modal-window').hide();
+            },
+            view_json_document: function(title, doc, text=null){
+                this.modal_json.title = title;
+                this.modal_json.text = text;
+                this.modal_json.doc = doc;
+                let pretty = JSONstringify(doc);
+                setTimeout(function(){
+                    $('#json-document').html(pretty);
+                }, 100);
+                $('#modal-json').show();
+            },
+            close_modal_json: function(){
+                $('#modal-json').hide();
+            },
+            open_messaging: function(title, text, their_did){
+                this.modal_messaging.input = null;
+                this.modal_messaging.their_did = their_did;
+                this.modal_messaging.title = title;
+                this.modal_messaging.text = text;
+                $('#textarea-messaging').html('');
+                let conn = this.get_connection(their_did);
+                if (conn && conn.messaging.queue.length > 0) {
+                    for(let i=0; i<conn.messaging.queue.length; i++) {
+                        let msg = conn.messaging.queue[i];
+                        this.add_message('Their', msg);
+                    }
+                    conn.messaging.queue = [];
+                    conn.messaging.counter = 0;
+                }
+                $('#modal-messaging').show();
+            },
+            get_connection: function(their_did){
+                let conn = null;
+                for(let i=0; i<this.connections.length;i++) {
+                    let item = this.connections[i];
+                    if (item.their.did === their_did) {
+                        conn = item;
+                        break;
+                    }
+                }
+                return conn;
+            },
+            process_message: function(their_did, msg){
+                if (their_did == this.modal_messaging.their_did) {
+                    this.add_message('Their', msg);
+                }
+                else {
+                    let conn = this.get_connection(their_did);
+                    if (conn) {
+                        conn.messaging.queue.push(msg);
+                        conn.messaging.counter += 1;
+                    }
+                }
+            },
+            close_messaging: function(){
+                this.modal_messaging.their_did = null;
+                $('#modal-messaging').hide();
+            },
+            add_message: function(from, msg){
+                let s = from + ': ' + msg + '\n';
+                $('#textarea-messaging').append(s);
             },
             btn_modal_cancel: function(){
                 if (this.modal_window.btn_cancel.on_click) {
@@ -217,9 +549,278 @@
                     this[this.modal_window.btn_accept.on_click]();
                 }
                 else {
-                    this.close_modal();
+                    let self = this;
+                self.modal_window.running = true;
+                self.modal_window.btn_accept.enable = false;
+                let payload = {};
+                for (let i=0; i<self.modal_window.form.fields.length; i++) {
+                    let field = self.modal_window.form.fields[i];
+                    payload[field.id] = field.value;
                 }
+                axios.post(
+                    '', {action: this.modal_window.form.action, payload: payload}
+                    ).then(function (response) {
+                        console.log('======== SUCCESS ========')
+                        console.log(response);
+                        self.modal_window.form.error = '';
+                        if(self.modal_window.form.reload_on_success) {
+                            location.reload();
+                        }
+                        else {
+                            self.close_modal();
+                        }
+                    }).catch(function (error) {
+                        self.modal_window.running = false;
+                        self.modal_window.form.error = error.data.detail;
+                        self.modal_window.btn_accept.enable = true;
+                        console.log('======== ERROR ========')
+                        console.log(error.data.detail);
+                    });
+                }
+            },
+            copy_to_clipboard: function(){
+                if (this.modal_window.copy.enable && this.modal_window.copy.text) {
+                    let dummy = document.createElement("textarea");
+                    document.body.appendChild(dummy);
+                    dummy.value = this.modal_window.copy.text;
+                    dummy.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(dummy);
+                }
+            },
+            // ======== Add Identity =========
+            add_identity: function(){
+                this.modal_window.title = 'Add Identity (Avatar)';
+                this.modal_window.text = 'Introduce yourself with multiple Keys and Labels';
+                this.modal_window.copy.enable = false;
+                this.modal_window.btn_cancel.enable = true;
+                this.modal_window.btn_cancel.caption = 'Cancel';
+                this.modal_window.btn_cancel.on_click = null;
+                this.modal_window.btn_accept.enable = true;
+                this.modal_window.btn_accept.on_click = null;
+                this.modal_window.btn_accept.caption = 'Submit';
+                this.modal_window.form.reload_on_success = true;
+                this.modal_window.form.action = 'add-identity';
+                this.modal_window.form.fields = [
+                    {
+                        id: 'label', label: 'Label',
+                        value: '{{title}}' + ' [Avatar-' + (this.identities.length+1).toString() + ']',
+                        placeholder: 'Enter your presentation name'
+                    },
+                ];
+                this.open_modal();
+            },
+            // ======== Add connection =========
+            add_connection: function(){
+                this.modal_window.title = 'Create new connection';
+                this.modal_window.text = 'Paste invitation URL (that you received via email, for example) to establish P2P connection';
+                this.modal_window.copy.enable = false;
+                this.modal_window.btn_cancel.enable = true;
+                this.modal_window.btn_cancel.caption = 'Cancel';
+                this.modal_window.btn_cancel.on_click = null;
+                this.modal_window.btn_accept.enable = true;
+                this.modal_window.btn_accept.on_click = null;
+                this.modal_window.btn_accept.caption = 'Establish';
+                this.modal_window.form.action = 'add-connection';
+                this.modal_window.form.reload_on_success = true;
+                let choices = []
+                for (let i=0; i<this.identities.length; i++) {
+                    let identity = this.identities[i];
+                    choices.push({
+                        text: identity.label,
+                        value: identity.did
+                    });
+                }
+                this.modal_window.form.fields = [
+                    {
+                        id: 'me', label: 'Myself identity',
+                        value: choices[0].value,
+                        choices: choices
+                    },
+                    {
+                        id: 'invitation', label: 'Invitation URL',
+                        value: '',
+                        placeholder: 'Paste invitation URL from your partner'
+                    },
+                ];
+                this.open_modal();
+            },
+            // ======== Open invitation =========
+            view_invitation: function(href, label){
+                this.modal_window.title = label + ' invitation';
+                this.modal_window.text = 'Send invitation to your partner to establish P2P connection...';
+                this.modal_window.copy.enable = true;
+                this.modal_window.copy.text = href;
+                this.modal_window.copy.link = true;
+                this.modal_window.btn_cancel.enable = true;
+                this.modal_window.btn_cancel.caption = 'Close';
+                this.modal_window.btn_cancel.on_click = null;
+                this.modal_window.btn_accept.enable = false;
+                this.modal_window.form.reload_on_success = false;
+                this.modal_window.form.fields = [];
+                this.open_modal();
+            },
+            // ===== Send message ============
+            send_message: function(){
+                let msg = this.modal_messaging.input;
+                let self = this;
+                this.modal_messaging.input = '';
+                axios.post(
+                    '', {
+                        action: 'send-message',
+                        payload: {their_did: this.modal_messaging.their_did, msg: msg}
+                    }
+                ).then(function(){
+                    self.add_message('Me', msg)
+                });
+
+            },
+            // ======= Schemas ============
+            register_schema: function(mode){
+                this.modal_schema.error = '';
+                this.modal_schema.running = false;
+                let mode_changed = this.modal_schema.mode != mode;
+                this.modal_schema.mode = mode || 1;
+                this.modal_schema.loading = false;
+                if (this.modal_schema.mode === 2) {
+                    this.modal_schema.title = "Load SSI Schema";
+                    this.modal_schema.name = '';
+                    this.modal_schema.attrs = [];
+                }
+                else {
+                    this.modal_schema.title = "Register SSI Schema";
+                }
+                if (mode_changed) {
+                    this.modal_schema.attrs = [];
+                }
+                if (this.modal_schema.choices.length == 0) {
+                    let choices = []
+                    for (let i = 0; i < this.identities.length; i++) {
+                        let identity = this.identities[i];
+                        choices.push({
+                            text: identity.label,
+                            value: identity.did
+                        });
+                    }
+                    this.modal_schema.choices = choices;
+                    this.modal_schema.did = choices[0].value;
+                }
+                $('#modal-schema').show();
+            },
+            schema_registered: function (){
+                let self = this;
+                this.modal_schema.running = true;
+                axios.post(
+                    '', {
+                        action: 'register-schema',
+                        payload: {
+                            did: this.modal_schema.did, name: this.modal_schema.name,
+                            ver: this.modal_schema.ver,
+                            attrs: this.modal_schema.attrs
+                        }
+                    }
+                ).then(function(){
+                    self.modal_schema.name = '';
+                    location.reload();
+                }).catch(function (error) {
+                    self.modal_schema.running = false;
+                    self.modal_schema.error = error.data.detail;
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            },
+            schema_loading: function (){
+                let self = this;
+                this.modal_schema.loading = true;
+                this.modal_schema.attrs = [];
+                axios.post(
+                    '', {
+                        action: 'load-schema',
+                        payload: {
+                            name: this.modal_schema.name,
+                        }
+                    }
+                ).then(function(response){
+                    self.modal_schema.loading = false;
+                    self.modal_schema.ver = response.data.ver;
+                    let attrs = [];
+                    for(let i=0; i<response.data.attrNames.length; i++) {
+                        let attr = {id:i, name: response.data.attrNames[i]};
+                        attrs.push(attr);
+                    }
+                    self.modal_schema.attrs = attrs;
+                    console.log(response.data);
+                }).catch(function (error) {
+                    self.modal_schema.loading = false;
+                    self.modal_schema.error = error.data.detail;
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            },
+            loaded_schema_store: function(){
+                let self = this;
+                this.modal_schema.running = true;
+                axios.post(
+                    '', {
+                        action: 'store-loaded-schema',
+                        payload: {
+                            name: this.modal_schema.name,
+                        }
+                    }
+                ).then(function(response){
+                    self.modal_schema.running = false;
+                    location.reload();
+                }).catch(function (error) {
+                    self.modal_schema.running = false;
+                    self.modal_schema.error = error.data.detail;
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            },
+            modal_schema_close: function(){
+                $('#modal-schema').hide();
+            },
+            append_schema_attr: function(){
+                this.modal_schema.attrs.push({name: '', id: 0})
+            },
+            remove_schema_attr: function(index) {
+                let attrs = [];
+                for (let i=0; i<this.modal_schema.attrs.length; i++) {
+                    let item = this.modal_schema.attrs[i];
+                    if (i != index) {
+                        attrs.push(item);
+                    }
+                }
+                this.modal_schema.attrs = attrs;
             }
+        },
+        beforeMount(){
+            let self = this;
+            function connect() {
+                let events_socket = new WebSocket('{{ws}}');
+                events_socket.onclose = function (event) {
+                    setTimeout(function() {
+                      connect();
+                    }, 3000);
+                };
+                events_socket.onopen = function(){
+                    console.log('WS EVENTS is Open')
+                };
+                events_socket.onmessage = function (event) {
+                    let s = event.data;
+                    let body = JSON.parse(s);
+                    console.log(body);
+                    let topic = body.topic;
+                    let payload = body.payload;
+                    if (topic === 'messaging.rcv') {
+                        self.process_message(payload.their_did, payload.msg);
+                    }
+                };
+                events_socket.onerror = function (error) {
+                    console.log("WS Error " + error.message);
+                };
+            }
+            connect();
         }
     });
 </script>

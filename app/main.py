@@ -1,17 +1,23 @@
 import os
+import asyncio
 import logging
 import argparse
+import threading
+from time import sleep
+from urllib.parse import urljoin
 from datetime import datetime
 
 import uvicorn
 import sirius_sdk
-from fastapi import FastAPI, Request
+from sirius_sdk.agent.aries_rfc.feature_0095_basic_message import Message as BasicMessage
+from fastapi import FastAPI, Request, HTTPException, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.responses import RedirectResponse
 
 import settings
 from app.settings import URL_STATIC
-from operations import create_identity
+from operations import *
 
 
 app = FastAPI()
@@ -27,14 +33,40 @@ STATIC_CFG = {
 }
 
 
-@app.get("/actor1")
+@app.get("/")
 async def index(request: Request):
+    my_identities = await get_my_identities()
+    my_connections = await get_my_connections()
+    my_schemas = await get_my_schemas()
+    identities = []
+    for item in my_identities:
+        tags = item['tags']
+        identities.append({
+            'did': f'did:sov:{tags["did"]}',
+            'label': tags['label'],
+            'inv': str(request.base_url) + tags['inv']
+        })
+    connections = []
+    for item in my_connections:
+        body = item.metadata
+        body['messaging'] = {'queue': [], 'counter': 0}
+        connections.append(body)
+    schemas = []
+    for item in my_schemas:
+        body = item.body
+        schemas.append(body)
+    # WS
+    ws = str(request.base_url)
+    ws = ws.replace('http://', 'ws://').replace('https://', 'wss://')
     context = {
         'static': STATIC_CFG,
-        'title': 'Company Ltd.'
+        'title': settings.TITLE,
+        'identities': identities,
+        'connections': connections,
+        'schemas': schemas,
+        'reset_link': urljoin(str(request.base_url), '/reset'),
+        'ws': ws
     }
-    async with sirius_sdk.context(**settings.ACTOR1):
-        pass
     response = templates.TemplateResponse(
         "cabinet.html",
         {
@@ -45,9 +77,137 @@ async def index(request: Request):
     return response
 
 
+@app.get("/reset")
+async def reset_cabinet(request: Request):
+    await reset()
+    response = RedirectResponse(url='/')
+    return response
+
+
+@app.post("/")
+async def action(request: Request):
+    body = await request.json()
+    action_ = body.get('action')
+    payload_ = body.get('payload')
+    try:
+        if action_ == 'add-identity':
+            label = payload_.get('label')
+            if not label:
+                raise HTTPException(status_code=400, detail="Label is Empty!")
+            await create_identity(label)
+        elif action_ == 'add-connection':
+            inv_url = payload_.get('invitation')
+            my_did = payload_.get('me')
+            if ':' in my_did:
+                my_did = my_did.split(':')[-1]
+            my_identities = await get_my_identities(did=my_did)
+            if my_identities:
+                identity = my_identities[0]['tags']
+                me = sirius_sdk.Pairwise.Me(did=identity['did'], verkey=identity['verkey'])
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown self identity with did: {my_did}")
+            if not inv_url:
+                raise HTTPException(status_code=400, detail="URL is Empty!")
+            try:
+                invitation = sirius_sdk.aries_rfc.Invitation.from_url(inv_url)
+                await establish_connection_as_invitee(me, identity['label'], invitation)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail="Invalid URL structure. Check it!")
+        elif action_ == 'send-message':
+            their_did = payload_.get('their_did', None)
+            msg = payload_.get('msg', None)
+            if msg:
+                collection = await get_my_connections(their_did=their_did)
+                if collection:
+                    p2p = collection[0]
+                    await sirius_sdk.send_to(
+                        message=sirius_sdk.aries_rfc.Message(content=msg),
+                        to=p2p
+                    )
+                else:
+                    raise HTTPException(status_code=400, detail="Unknown P2P")
+        elif action_ == 'register-schema':
+            for name, fld in payload_.items():
+                if not fld:
+                    raise HTTPException(status_code=400, detail=f"{name} is empty".capitalize())
+            attrs = payload_['attrs']
+            for i, attr in enumerate(attrs):
+                name = attr.get('name')
+                if not name:
+                    raise HTTPException(status_code=400, detail=f"Attribute[{i}].name is empty")
+            attrs = [item['name'] for item in attrs]
+            await register_schema(did=payload_['did'], name=payload_['name'], ver=payload_['ver'], attrs=attrs)
+        elif action_ == 'load-schema':
+            name = payload_.get('name')
+            if not name:
+                raise HTTPException(status_code=400, detail=f"Schema-ID is empty")
+            success, schema = await load_schema(schema_id=name)
+            if success:
+                return dict(**schema.body)
+            else:
+                raise HTTPException(status_code=400, detail=f"Not found Schema with same ID")
+        elif action_ == 'store-loaded-schema':
+            name = payload_.get('name')
+            if not name:
+                raise HTTPException(status_code=400, detail=f"Schema-ID is empty")
+            await store_dkms_schema(schema_id=name)
+        elif action_ == 'reset':
+            confirm = payload_.get('confirm')
+            if confirm and confirm.lower() == 'reset':
+                await reset()
+            else:
+                raise HTTPException(status_code=400, detail="Confirmation declined")
+    except RuntimeError as e:
+        msg = ''
+        for arg in e.args:
+            if type(arg) is str:
+                msg = arg
+                break
+        raise HTTPException(status_code=400, detail=msg)
+    else:
+        return {'success': True}
+
+
+@app.websocket("/")
+async def events(websocket: WebSocket):
+    await websocket.accept()
+    listener = await sirius_sdk.subscribe()
+    async for event in listener:
+        if isinstance(event.message, sirius_sdk.aries_rfc.Message):
+            content = event.message.content
+            print(f'Received text message: {content}')
+            their_vk = event.sender_verkey
+            my_vk = event.recipient_verkey
+            conn_ = await get_my_connections(their_verkey=their_vk, my_verkey=my_vk)
+            if conn_:
+                p2p = conn_[0]
+                await websocket.send_json({
+                    'topic': 'messaging.rcv',
+                    'payload': {
+                        'msg': content,
+                        'their_did': p2p.their.did
+                    }
+                })
+            else:
+                print(f'Not found P2P for verkey: {their_vk}')
+
+
+
 @app.get("/health_check")
 async def health_check():
     return {"utc": datetime.utcnow().isoformat()}
+
+
+def thread_routine():
+    loop = asyncio.new_event_loop()
+    while True:
+        logging.warning('Run loop')
+        try:
+            loop.run_until_complete(foreground())
+        except Exception as e:
+            logging.exception('Exception')
+        logging.warning('Sleep before re-run loop')
+        sleep(3)
 
 
 if __name__ == '__main__':
@@ -57,6 +217,10 @@ if __name__ == '__main__':
     is_production = args.production is not None
     args = ()
     kwargs = {}
+    f = asyncio.ensure_future(foreground())
+    th = threading.Thread(target=thread_routine)
+    th.daemon = True
+    th.start()
     if is_production:
         logging.warning('\n')
         logging.warning('\t*************************************')
@@ -64,6 +228,7 @@ if __name__ == '__main__':
         logging.warning('\t*************************************')
         args = ['app.main:app']
         kwargs['proxy_headers'] = True
+        kwargs.update({'reload': True})
         uvicorn.run(*args, host="0.0.0.0", port=80, workers=int(os.getenv('WORKERS')), **kwargs)
     else:
         logging.warning('\n')

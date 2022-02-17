@@ -1,0 +1,12 @@
+{
+  "title": "Gov. UZBEKISTAN",
+  "server_uri": "https://agents.socialsirius.com",
+  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGPWAYupT69Y1oLQHKHfvYjaIDdKxWoex8IgFszMiB2S8=",
+  "p2p": {
+    "their_verkey": "7W7Ce8k4aco9LP4R57TzWxv9UBEmSqL9gGjLrczmb3Nc",
+    "my_keys": [
+      "EvceLtQ2jZuqknGB7E5V5gSDsdVKMBzzLjAFm19Es9mh",
+      "4fU3KUwex43uNcYzJLT3dZNN4UMs5V9vqJbDmcPrUZoLNXUB2o95CPsPDtRaK7hwW8ok8SqyNTzsjZ5Lk2VmJh3d"
+     ]
+  }
+}

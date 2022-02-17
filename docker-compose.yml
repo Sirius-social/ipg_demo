@@ -14,6 +14,32 @@ services:
   redis2:
     image: redis
 
+  logistics:
+    image: "socialsirius/ipg_demo:${VERSION-dev}"
+    command: bash -c "python main.py"
+    environment:
+      - TEAMCITY_VERSION
+      - MEMCACHED=memcached
+      - REDIS=redis://redis1,redis://redis2
+      - DATABASE_HOST=db
+      - DATABASE_USER=postgres
+      - DATABASE_NAME=postgres
+      - DATABASE_PASSWORD=postgres
+      - LOGLEVEL=DEBUG
+      #### SDK ###
+      - SDK=/secrets/logistics.json
+      - STEWARD=/secrets/steward.json
+    volumes:
+      - ./app:/app
+      - ./.secrets:/secrets
+    ports:
+      - "8000:80"
+    depends_on:
+      - db
+      - memcached
+      - redis1
+      - redis2
+
   application:
     build:
       context: .
@@ -28,8 +54,12 @@ services:
       - DATABASE_NAME=postgres
       - DATABASE_PASSWORD=postgres
       - LOGLEVEL=DEBUG
+      #### SDK ###
+      - SDK=/secrets/trader.json
+      - STEWARD=/secrets/steward.json
     volumes:
       - ./app:/app
+      - ./.secrets:/secrets
     ports:
       - "80:80"
     depends_on:
@@ -37,3 +67,4 @@ services:
       - memcached
       - redis1
       - redis2
+      - logistics

@@ -1,0 +1,14 @@
+{
+  "title": "Networks Synergy Steward",
+  "server_uri": "https://agents.socialsirius.com",
+  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGGA5XxacewKGShwge4pQBye9db/uUlOfUrePByAe41wo=",
+  "p2p": {
+    "their_verkey": "BopmzjfZR9LrfNMBVNwiU5PAn46XPYsaPswYgRCuU2Kr",
+    "my_keys": [
+      "AcNMUX2e8gqTHu6wChHav24q1QQ4eUmM74MDNzeBVUBW",
+      "p4aVFCHqT8ywzVHx2Nza34uLRQmWUysAzuY4ncdBqirBuUrKXkB2VREH73feHX2wyYm5iJyYZ6BSszGpwgrGCfW"
+     ]
+  },
+  "did": "Th7MpTaRZVRYnPiabds81Y",
+  "verkey": "FYmoFw55GeQH7SRFa37dkx1d2dZ3zUF8ckg7wmL7ofN4"
+}

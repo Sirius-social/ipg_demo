@@ -1,0 +1,12 @@
+{
+  "title": "JSC \"UZBEKNEFTEGAZ\"",
+  "server_uri": "https://agents.socialsirius.com",
+  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGpb1ahFtVLLGplGLn0oKeU2aN/VOMAiEOnkkBnnL/X54=",
+  "p2p": {
+    "their_verkey": "7qZQS2JHnT5i1UzRu6MsUaz6Z6UHGa4jDHXNHG5rBKps",
+    "my_keys": [
+      "2rHCLR8NCRAsxZUdmCRg53s6vAix3QSDRhbFUeU423pE",
+      "2C3CFoLZ7LHTbfqZyTjaLjLwzxqLSJTnQhQ8quXoLAdYpk4T1RS67Ue54DzBa1Ez2i2hcaiEjrT3gMUgfKQgxKxE"
+     ]
+  }
+}

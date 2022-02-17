@@ -1,0 +1,12 @@
+{
+  "title": "Integral Shipping and Trading SA",
+  "server_uri": "https://agents.socialsirius.com",
+  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGrZhYw+bgj47l/Hbv8WnGGWaN/VOMAiEOnkkBnnL/X54=",
+  "p2p": {
+    "their_verkey": "CBDQGq1pYieQrHkmV3xh6hAtvP5oi2Ka59wq3ZXykpjp",
+    "my_keys": [
+      "7uQV45RGcF1z21TcXVEytoPPV97RJW2Z3B1F8x9FFy68",
+      "5uYCJpsRXCycJ2Rk9w6j82ASoGTbM2LVTFCdJrFDLbqFJm4Y3MVhk7mAzp7teTgdi4GFaJoPXqt2HcK32WynuwvG"
+     ]
+  }
+}

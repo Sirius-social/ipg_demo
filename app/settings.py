@@ -1,8 +1,11 @@
+import json
 import os
 import logging
 
 import sirius_sdk
 from fastapi.templating import Jinja2Templates
+
+from utils import load_sdk_cred_from_file, load_json_from_file
 
 
 log_levels = {
@@ -62,40 +65,21 @@ TEST_SQLALCHEMY_DATABASE_URL = \
     f"postgresql://{DATABASE_USER}:{DATABASE_PASSWORD}@{DATABASE_HOST}:{DATABASE_PORT}/{TEST_DATABASE_NAME}"
 
 
-ACTOR1 = {
-  "server_uri": "https://agents.socialsirius.com",
-  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGrZhYw+bgj47l/Hbv8WnGGWaN/VOMAiEOnkkBnnL/X54=".encode(),
-  "p2p": sirius_sdk.P2PConnection(
-    their_verkey="CBDQGq1pYieQrHkmV3xh6hAtvP5oi2Ka59wq3ZXykpjp",
-    my_keys=(
-      "7uQV45RGcF1z21TcXVEytoPPV97RJW2Z3B1F8x9FFy68",
-      "5uYCJpsRXCycJ2Rk9w6j82ASoGTbM2LVTFCdJrFDLbqFJm4Y3MVhk7mAzp7teTgdi4GFaJoPXqt2HcK32WynuwvG"
-    )
-  )
-}
+SDK = os.getenv('SDK')
+if not SDK:
+    raise RuntimeError('Env var SDK must be set')
+SDK, extra = load_sdk_cred_from_file(SDK)
+
+SDK_STEWARD = os.getenv('STEWARD')
+if not SDK_STEWARD:
+    raise RuntimeError('Env var STEWARD must be set')
+js = load_json_from_file(SDK_STEWARD)
+SDK_STEWARD, _ = load_sdk_cred_from_file(SDK_STEWARD)
+STEWARD_DID = js['did']
+
+DKMS_NETWORK = 'test_network'
+TITLE = extra.pop('title', 'Demo Company Ltd.')
 
 
-ACTOR2 = {
-  "server_uri": "https://agents.socialsirius.com",
-  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGpb1ahFtVLLGplGLn0oKeU2aN/VOMAiEOnkkBnnL/X54=".encode(),
-  "p2p": sirius_sdk.P2PConnection(
-    their_verkey="7qZQS2JHnT5i1UzRu6MsUaz6Z6UHGa4jDHXNHG5rBKps",
-    my_keys=(
-      "2rHCLR8NCRAsxZUdmCRg53s6vAix3QSDRhbFUeU423pE",
-      "2C3CFoLZ7LHTbfqZyTjaLjLwzxqLSJTnQhQ8quXoLAdYpk4T1RS67Ue54DzBa1Ez2i2hcaiEjrT3gMUgfKQgxKxE"
-    )
-  )
-}
+sirius_sdk.init(**SDK)
 
-
-ACTOR3 = {
-    "server_uri": "https://agents.socialsirius.com",
-    "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGBxsehWYTfDYgxmFnvfL9q2aN/VOMAiEOnkkBnnL/X54=".encode(),
-    "p2p": sirius_sdk.P2PConnection(
-        their_verkey="93yjXvesU2w6Sj5Ei3P9GYyGLTMPg7DjT7sqDeBDFW3g",
-        my_keys=(
-          "Cu1LgDJba7W39vTaHXjeniqMXmFcFFsg6WL5y8QyTNkn",
-          "5B9G5BBTHfyCKw4HRokDd8NfQCbTyrBP3a1s8f3JJH3dYQ4C48xiRzch7Wb3g7MFmycjHxUxBFsnfhUpAiqr6yvN"
-        )
-    )
-}

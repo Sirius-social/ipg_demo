@@ -1,0 +1,12 @@
+{
+  "title": "Gov. Russian Federation",
+  "server_uri": "https://agents.socialsirius.com",
+  "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nG+brZwgQxRxwm586qox+ZgRpyf/V0TXeCtt+rv3+GNaA=",
+  "p2p": {
+    "their_verkey": "H9PppPM7pRgfPBu6cAyxWy4Hfys9YhL439RnFGjVD6ys",
+    "my_keys": [
+      "6V2R2EFum2tCx9PQzgL1d2e77dYY78S8FacYuYDvYkwU",
+      "4BGMqX8qFZDCBYUZK5NBC6CQGAsDpK2JTTkD2Srnnctn3nsT6bsn8XbUqUFEg1u9Fh2TfAPVnuqMPcjdnVU8yeqg"
+     ]
+  }
+}
