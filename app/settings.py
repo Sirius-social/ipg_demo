@@ -79,6 +79,7 @@ STEWARD_DID = js['did']
 
 DKMS_NETWORK = 'test_network'
 TITLE = extra.pop('title', 'Demo Company Ltd.')
+MASTER_SECRET_ID = extra.pop('master_secret_id')
 
 
 sirius_sdk.init(**SDK)

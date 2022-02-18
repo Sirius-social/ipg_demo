@@ -1,11 +1,13 @@
 import os
 import asyncio
+import random
 import logging
 import argparse
 import threading
 from time import sleep
 from urllib.parse import urljoin
 from datetime import datetime
+from collections import OrderedDict
 
 import uvicorn
 import sirius_sdk
@@ -29,7 +31,8 @@ STATIC_CFG = {
     'styles': URL_STATIC + '/admin/css/styles.css',
     'vue': URL_STATIC + '/vue.min.js',
     'axios': URL_STATIC + '/axios.min.js',
-    'jquery': URL_STATIC + '/jquery-3.6.0.min.js'
+    'jquery': URL_STATIC + '/jquery-3.6.0.min.js',
+    'jseditor': URL_STATIC + '/jquery.json-editor.min.js'
 }
 
 
@@ -38,23 +41,40 @@ async def index(request: Request):
     my_identities = await get_my_identities()
     my_connections = await get_my_connections()
     my_schemas = await get_my_schemas()
+    my_creds = await get_my_credentials()
     identities = []
+    identities_labels = {}
     for item in my_identities:
         tags = item['tags']
+        did = tags["did"]
         identities.append({
-            'did': f'did:sov:{tags["did"]}',
+            'did': f'did:sov:{did}',
             'label': tags['label'],
             'inv': str(request.base_url) + tags['inv']
         })
+        identities_labels[did] = tags['label']
     connections = []
     for item in my_connections:
         body = item.metadata
         body['messaging'] = {'queue': [], 'counter': 0}
         connections.append(body)
+        their_did = item.their.did
+        their_label = item.their.label
+        identities_labels[their_did] = their_label
     schemas = []
     for item in my_schemas:
         body = item.body
+        body['cred_defs'] = []
+        for cred_def in item.cred_defs:
+            issuer_did = cred_def.split(':')[0]
+            issuer_label = identities_labels.get(issuer_did, issuer_did)
+            body['cred_defs'].append({'id': cred_def, 'label': issuer_label, 'did': issuer_did})
         schemas.append(body)
+    credentials = []
+    for item in my_creds:
+        cred = dict(**item)
+        cred['issuer'] = identities_labels.get(cred['issuer_did'], None)
+        credentials.append(cred)
     # WS
     ws = str(request.base_url)
     ws = ws.replace('http://', 'ws://').replace('https://', 'wss://')
@@ -64,8 +84,24 @@ async def index(request: Request):
         'identities': identities,
         'connections': connections,
         'schemas': schemas,
+        'credentials': credentials,
         'reset_link': urljoin(str(request.base_url), '/reset'),
-        'ws': ws
+        'ws': ws,
+        'default_proof_request': OrderedDict({
+            "nonce": ''.join([random.choice(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']) for _ in range(10)]),
+            "name": 'Proof request',
+            "version": "0.1",
+            "requested_attributes": {
+                'attr1_referent': {
+                    "name": '<attr-name>',
+                    "restrictions": {
+                        "issuer_did": '<issuer-did>'
+                    }
+
+                }
+            },
+            "requested_predicates": {}
+        })
     }
     response = templates.TemplateResponse(
         "cabinet.html",
@@ -157,6 +193,35 @@ async def action(request: Request):
                 await reset()
             else:
                 raise HTTPException(status_code=400, detail="Confirmation declined")
+        elif action_ == 'register-cred-def':
+            did = payload_['did']
+            if ':' in did:
+                did = did.split(':')[-1]
+            schema_id = payload_['schema_id']
+            tag = payload_.get('tag', None)
+            if not tag:
+                raise HTTPException(status_code=400, detail="TAG is Empty!")
+            await register_cred_def(schema_id, tag, did)
+        elif action_ == 'issue-cred':
+            their_did = payload_.pop('to')
+            if ':' in their_did:
+                their_did = their_did.split(':')[-1]
+            cred_def_id = payload_.pop('cred_def_id')
+            values = dict(**payload_)
+            for name, value in values.items():
+                if not value:
+                    raise HTTPException(status_code=400, detail=f"{name} attrib is Empty!")
+            await issue_cred(their_did, values, cred_def_id)
+        elif action_ == 'verify':
+            their_did = payload_.pop('their_did')
+            if ':' in their_did:
+                their_did = their_did.split(':')[-1]
+            proof_request = payload_.pop('proof_request')
+            success, msg = await verify(their_did, proof_request=proof_request)
+            return {
+                'success': success,
+                'msg': msg
+            }
     except RuntimeError as e:
         msg = ''
         for arg in e.args:
@@ -190,7 +255,6 @@ async def events(websocket: WebSocket):
                 })
             else:
                 print(f'Not found P2P for verkey: {their_vk}')
-
 
 
 @app.get("/health_check")

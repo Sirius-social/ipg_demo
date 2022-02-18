@@ -1,19 +1,23 @@
 import json
 import logging
-from typing import Optional
+import hashlib
+from typing import Optional, List
 
 import sirius_sdk
 from sirius_sdk.agent.wallet.abstract import NYMRole as ActorRole
 from sirius_sdk.agent.wallet.abstract.non_secrets import RetrieveRecordOptions
 from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema
-from sirius_sdk.agent.ledger import Schema, SchemaFilters
+from sirius_sdk.agent.ledger import Schema, SchemaFilters, CredentialDefinition
+from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
+from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import ProposedAttrib
 
-from settings import DKMS_NETWORK, STEWARD_DID, SDK_STEWARD
+from settings import DKMS_NETWORK, STEWARD_DID, SDK_STEWARD, MASTER_SECRET_ID, TITLE
 
 
 IDENTITIES_TYPE = 'demo_identities'
 CONNECTIONS_TYPE = 'demo_connections'
 SCHEMAS_TYPE = 'demo_schemas'
+CREDS_TYPE = 'demo_credentials'
 
 
 class ConsoleLogger:
@@ -92,8 +96,32 @@ async def get_my_schemas(**search):
     my_schemas = []
     for raw in my_schemas_raw:
         schema = Schema(**json.loads(raw['value']))
+        schema.cred_defs = []
+        tags = raw.get('tags', {})
+        for n, val in tags.items():
+            if n.startswith('cred_def_'):
+                schema.cred_defs.append(val)
         my_schemas.append(schema)
     return my_schemas or []
+
+
+async def get_my_credentials():
+    opts = RetrieveRecordOptions()
+    opts.check_all()
+    search_with_tags = {}
+    my_creds_raw, count = await sirius_sdk.NonSecrets.wallet_search(
+        CREDS_TYPE, search_with_tags, opts, 100
+    )
+    credentials = []
+    if my_creds_raw:
+        for raw in my_creds_raw:
+            s = raw['value']
+            cred = json.loads(s)
+            cred['id'] = raw['id']
+            if 'issuer_did' not in cred:
+                cred['issuer_did'] = None
+            credentials.append(cred)
+    return credentials
 
 
 async def reset():
@@ -101,6 +129,10 @@ async def reset():
     my_schemas = await get_my_schemas()
     for item in my_schemas:
         await sirius_sdk.NonSecrets.delete_wallet_record(SCHEMAS_TYPE, item.id)
+    # delete credentials
+    my_creds = await get_my_credentials()
+    for item in my_creds:
+        await sirius_sdk.NonSecrets.delete_wallet_record(CREDS_TYPE, item['id'])
     # delete identities
     my_identities = await get_my_identities()
     for item in my_identities:
@@ -167,6 +199,20 @@ async def store_schema_in_wallet(did: str, name: str, ver: str, schema: Schema):
         )
 
 
+def build_schema_tag_name_for_cred_def(cred_def_id: str):
+    return f'cred_def_{cred_def_id}'
+
+
+async def register_cred_def_for_schema(cred_def_id: str, schema_id: str):
+    tag_name = build_schema_tag_name_for_cred_def(cred_def_id)
+    await sirius_sdk.NonSecrets.add_wallet_record_tags(
+        SCHEMAS_TYPE,
+        schema_id,
+        # extended tags
+        tags={tag_name: cred_def_id}
+    )
+
+
 async def store_dkms_schema(schema_id: str):
     success, schema = await load_schema(schema_id)
     if success:
@@ -191,6 +237,21 @@ async def register_schema(did: str, name: str, ver: str, attrs: list):
     print('schema registered')
 
 
+async def register_cred(cred_id: str, preview: List[ProposedAttrib] = None, comment: str = None, issuer_did: str = None):
+    try:
+        await sirius_sdk.NonSecrets.delete_wallet_record(CREDS_TYPE, cred_id)
+    except:
+        pass
+    if preview:
+        values = [item.to_json() for item in preview]
+        value_as_str = json.dumps({
+            'comment': comment,
+            'issuer_did': issuer_did,
+            'preview': values
+        })
+        await sirius_sdk.NonSecrets.add_wallet_record(type_=CREDS_TYPE, id_=cred_id, value=value_as_str)
+
+
 async def load_schema(schema_id: str) -> (bool, Optional[Schema]):
     print(f'loading schema-id: {schema_id}')
     async with sirius_sdk.context(**SDK_STEWARD):
@@ -206,6 +267,31 @@ async def load_schema(schema_id: str) -> (bool, Optional[Schema]):
     else:
         print('schema not loaded, Error!')
     return success, schema
+
+
+async def register_cred_def(schema_id: str, tag: str, did: str):
+    schemas = await get_my_schemas()
+    schema = None
+    for s in schemas:
+        if s.id == schema_id:
+            schema = s
+            break
+    if not schema:
+        raise RuntimeError(f'Schema with ID: {schema_id} not found!')
+    print('Registering Cred-Def...')
+    try:
+        cred_def = CredentialDefinition(tag, schema)
+        dkms = await sirius_sdk.ledger(DKMS_NETWORK)
+
+        success, ledger_cred_def = await dkms.register_cred_def(cred_def, did)
+        if success:
+            await register_cred_def_for_schema(ledger_cred_def.id, schema_id)
+            print('Successfully registered Cred-Def')
+        else:
+            raise RuntimeError('Error while registering Cred-Def')
+    except Exception as e:
+        print(str(e))
+        raise RuntimeError('Error while registering Cred-Def')
 
 
 async def establish_connection_as_inviter(
@@ -239,8 +325,65 @@ async def establish_connection_as_invitee(me: sirius_sdk.Pairwise.Me, my_label: 
         await register_connection(p2p)
 
 
+async def issue_cred(their_did: str, values: dict, cred_def_id: str):
+    holder = await sirius_sdk.PairwiseList.load_for_did(their_did)
+    if not holder:
+        raise RuntimeError(f'Not found P2P for Their DID: {their_did}')
+    tag_name = build_schema_tag_name_for_cred_def(cred_def_id)
+    schemas = await get_my_schemas(**{tag_name: cred_def_id})
+    if not schemas:
+        raise RuntimeError(f'Nor found schema for Cred-Def: {cred_def_id}')
+    schema = schemas[0]
+    values = {name: value for name, value in values.items() if name in schema.attributes}
+    if set(values.keys()) != set(schema.attributes):
+        raise RuntimeError('Values set not equal to schema attribute set')
+    preview = []
+    for name, value in values.items():
+        preview.append(
+            ProposedAttrib(name, value)
+        )
+
+    my_did = holder.me.did
+    dkms = await sirius_sdk.ledger(DKMS_NETWORK)
+    schema = await dkms.load_schema(schema.id, my_did)
+    cred_def = await dkms.load_cred_def(cred_def_id, my_did)
+    ttl = 15
+    cred_id = f'{cred_def_id}:{my_did}->{their_did}'
+    cred_id = hashlib.sha256(cred_id.encode()).hexdigest()
+
+    machine = sirius_sdk.aries_rfc.Issuer(holder=holder, logger=ConsoleLogger(), time_to_live=ttl)
+    success = await machine.issue(
+        values=values,
+        schema=schema,
+        cred_def=cred_def,
+        comment='Hello Iam issuer',
+        preview=preview,
+        cred_id=cred_id
+    )
+    return success
+
+
+async def verify(their_did: str, proof_request: dict) -> (bool, Optional[dict]):
+    prover = await sirius_sdk.PairwiseList.load_for_did(their_did)
+    if not prover:
+        raise RuntimeError(f'Not found P2P for Their DID: {their_did}')
+    dkms = await sirius_sdk.ledger(DKMS_NETWORK)
+
+    machine = sirius_sdk.aries_rfc.Verifier(prover=prover, ledger=dkms)
+    success = await machine.verify(proof_request, proto_version='1.0')
+    if success:
+        return True, machine.revealed_attrs
+    else:
+        return False, machine.problem_report
+
+
 async def foreground():
+    try:
+        await sirius_sdk.AnonCreds.prover_create_master_secret(MASTER_SECRET_ID)
+    except AnoncredsMasterSecretDuplicateNameError as e:
+        pass
     my_endpoint = await get_my_endpoint()
+    dkms = await sirius_sdk.ledger(DKMS_NETWORK)
     listener = await sirius_sdk.subscribe(group_id='IPG_DEMO_FOREGROUND')
     async for event in listener:
         if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
@@ -259,3 +402,33 @@ async def foreground():
                     await establish_connection_as_inviter(me, my_endpoint, event.recipient_verkey, event.message)
                 else:
                     logging.warning(f'Aries-RFC[0160]: Not found identity for recipient_verkey: {event.recipient_verkey}')
+        elif isinstance(event.message, sirius_sdk.aries_rfc.OfferCredentialMessage):
+            print('====== Received Credential Offer, Apply IT!!! ============')
+            ttl = 15
+            offer = event.message
+            if event.pairwise:
+                machine = sirius_sdk.aries_rfc.Holder(issuer=event.pairwise, time_to_live=ttl, logger=ConsoleLogger())
+                success, cred_id = await machine.accept(
+                    offer,
+                    MASTER_SECRET_ID,
+                    comment=f'Hello, Iam {TITLE}',
+                    ledger=dkms
+                )
+                if success:
+                    print(f'Register Cred with ID: {cred_id}')
+                    issuer_did = event.pairwise.their.did
+                    await register_cred(cred_id, preview=offer.preview, comment=offer.comment, issuer_did=issuer_did)
+            else:
+                print('Offer pairwise is Empty')
+        elif isinstance(event.message, sirius_sdk.aries_rfc.RequestPresentationMessage):
+            print('====== Received RequestPresentationMessage, try verify proof !!! ============')
+            ttl = 30
+            request = event.message
+            if event.pairwise:
+                machine = sirius_sdk.aries_rfc.Prover(
+                    verifier=event.pairwise, ledger=dkms, time_to_live=ttl, logger=ConsoleLogger()
+                )
+                success = await machine.prove(request, MASTER_SECRET_ID)
+                print(f'Verify proof status: {success}')
+            else:
+                print('ProofRequest pairwise is Empty')

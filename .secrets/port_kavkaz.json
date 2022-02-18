@@ -1,5 +1,6 @@
 {
   "title": "Port KAVKAZ, Russia",
+  "master_secret_id": "master_secret_id",
   "server_uri": "https://agents.socialsirius.com",
   "credentials": "f4WDZVlHF7mi81PyYBjHa2asdLTR6g0oF2+tBwngVs9e3CWqvHh8zl2xSzbBh8nGAZEWtEKKvgQ0Q5u8xkCJtva9/MFWmbBheMhrHKN5kcg=",
   "p2p": {
