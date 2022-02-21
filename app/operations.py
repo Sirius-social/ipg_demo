@@ -8,9 +8,10 @@ from sirius_sdk.agent.wallet.abstract import NYMRole as ActorRole
 from sirius_sdk.agent.wallet.abstract.non_secrets import RetrieveRecordOptions
 from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema
 from sirius_sdk.agent.ledger import Schema, SchemaFilters, CredentialDefinition
-from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError
+from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError, WalletItemAlreadyExists
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import ProposedAttrib
 
+from didcomm.const import MSG_TYP_GOSSYP
 from settings import DKMS_NETWORK, STEWARD_DID, SDK_STEWARD, MASTER_SECRET_ID, TITLE
 
 
@@ -177,10 +178,13 @@ async def register_connection(p2p: sirius_sdk.Pairwise):
         'my_did': p2p.me.did, 'my_verkey': p2p.me.verkey,
         'their_did': p2p.their.did, 'their_verkey': p2p.their.verkey
     }
-    await sirius_sdk.NonSecrets.add_wallet_record(
-        type_=CONNECTIONS_TYPE, id_=tags['their_did'], value=json.dumps(p2p.metadata),
-        tags=tags
-    )
+    try:
+        await sirius_sdk.NonSecrets.add_wallet_record(
+            type_=CONNECTIONS_TYPE, id_=tags['their_did'], value=json.dumps(p2p.metadata),
+            tags=tags
+        )
+    except WalletItemAlreadyExists:
+        pass
 
 
 async def store_schema_in_wallet(did: str, name: str, ver: str, schema: Schema):
@@ -369,12 +373,31 @@ async def verify(their_did: str, proof_request: dict) -> (bool, Optional[dict]):
         raise RuntimeError(f'Not found P2P for Their DID: {their_did}')
     dkms = await sirius_sdk.ledger(DKMS_NETWORK)
 
-    machine = sirius_sdk.aries_rfc.Verifier(prover=prover, ledger=dkms)
-    success = await machine.verify(proof_request, proto_version='1.0')
-    if success:
-        return True, machine.revealed_attrs
-    else:
-        return False, machine.problem_report
+    ttl = 30
+    machine = sirius_sdk.aries_rfc.Verifier(prover=prover, ledger=dkms, time_to_live=ttl)
+    try:
+        success = await machine.verify(proof_request, proto_version='1.0')
+        if success:
+            return True, machine.revealed_attrs
+        else:
+            return False, machine.problem_report
+    except Exception as e:
+        logging.exception('Verify Exception!!!')
+        raise
+
+
+async def gossyp(members: list, msg: str = None):
+    msg = sirius_sdk.messaging.Message({
+        '@type': MSG_TYP_GOSSYP,
+        'members': members,
+        'content': msg
+    })
+    for member in members:
+        p2p = await sirius_sdk.PairwiseList.load_for_did(member)
+        if p2p:
+            await sirius_sdk.send_to(msg, p2p)
+        else:
+            logging.error(f'Not found P2P for DID: {member}')
 
 
 async def foreground():
@@ -432,3 +455,6 @@ async def foreground():
                 print(f'Verify proof status: {success}')
             else:
                 print('ProofRequest pairwise is Empty')
+        else:
+            pass
+

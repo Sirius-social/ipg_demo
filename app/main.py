@@ -19,6 +19,7 @@ from starlette.responses import RedirectResponse
 
 import settings
 from app.settings import URL_STATIC
+from didcomm.const import MSG_TYP_GOSSYP
 from operations import *
 
 
@@ -34,6 +35,71 @@ STATIC_CFG = {
     'jquery': URL_STATIC + '/jquery-3.6.0.min.js',
     'jseditor': URL_STATIC + '/jquery.json-editor.min.js'
 }
+
+GOSSYP_DEMO = {
+    "nodes": [
+        {"id": "priemosdatchik", "human": True, "name": "Приемосдатчик", "loaded": False, "auras": ["Подача и уборка вагона"]},
+        {"id": "shipper", "human": True, "name": "Грузоотправитель", "loaded": False, "auras": ["Оформление груза"]},
+        {"id": "tvk", "human": True, "name": "ТВК", "loaded": False, "auras": ["Оплата накладной"]},
+        {"id": "asu_dkr", "human": False, "name": "АСУ ДКР", "loaded": False, "auras": ["Оформление груза", "Оплата накладной"]},
+        {"id": "asu_st", "human": False, "name": "АСУ СТ", "loaded": False, "auras": ["Подача и уборка вагона", "Оформление груза"]},
+        {"id": "asoup", "human": False, "name": "АСОУП", "loaded": False, "auras": ["Оплата накладной"]},
+        {"id": "ekiodv", "human": False, "name": "ЕКИОДВ", "loaded": True, "auras": ["Оплата накладной"]},
+    ],
+    "links": [
+        {"id": "1", "from": "priemosdatchik", "to": "asu_st", "label": "Заполнение ведомости", "request": True},
+        {"id": "2", "from": "asu_st", "to": "priemosdatchik", "label": "Готовая форма ГУ-46", "request": False},
+        {"id": "3", "from": "shipper", "to": "asu_dkr", "label": "Оформление накладной", "request": True},
+        {"id": "4", "from": "asu_dkr", "to": "shipper", "label": "Накладная создана", "request": False},
+        {"id": "5", "from": "asu_dkr", "to": "asu_st", "label": "Проверка ГУ-46", "request": True},
+        {"id": "6", "from": "asu_st", "to": "asu_dkr", "label": "Ответ", "request": False},
+        {"id": "7", "from": "tvk", "to": "asu_dkr", "label": "Платеж", "request": True},
+        {"id": "8", "from": "asu_dkr", "to": "tvk", "label": "Оплачено", "request": False},
+        {"id": "9", "from": "asu_dkr", "to": "asoup", "label": "410", "request": True},
+        {"id": "10", "from": "asoup", "to": "asu_dkr", "label": "Результат проверки", "request": False},
+        {"id": "11", "from": "asoup", "to": "ekiodv", "label": "410", "request": True},
+        {"id": "12", "from": "ekiodv", "to": "asoup", "label": "Результат проверки", "request": False},
+    ]
+}
+
+
+AURAS_MY_CONNECTIONS = 'My connections'
+
+
+def build_connection_graph(connections: list) -> dict:
+    nodes = [
+        {
+            "id": "me",
+            "human": False,
+            "name": "MySelf",
+            "loaded": True,
+            "locked": "pinned",
+            "auras": [AURAS_MY_CONNECTIONS],
+            "style": {"fillColor": "orange"}
+        }
+    ]
+    links = []
+    """
+    for conn in connections:
+        id = conn['their']['did']
+        nodes.append({
+            "id": id,
+            "human": False,
+            "name": conn['their']['label'],
+            "loaded": True,
+            "auras": [AURAS_MY_CONNECTIONS]
+        })
+        links.append({
+            "id": str(len(links)),
+            "from": "me",
+            "to": id,
+            "label": "P2P",
+        })
+    """
+    return {
+        "nodes": nodes,
+        "links": links
+    }
 
 
 @app.get("/")
@@ -101,7 +167,10 @@ async def index(request: Request):
                 }
             },
             "requested_predicates": {}
-        })
+        }),
+        'conn_graph': build_connection_graph(connections),
+        'gossyp_demo': GOSSYP_DEMO,
+        'auras_my_connections': AURAS_MY_CONNECTIONS
     }
     response = templates.TemplateResponse(
         "cabinet.html",
@@ -222,6 +291,17 @@ async def action(request: Request):
                 'success': success,
                 'msg': msg
             }
+        elif action_ == 'gossyp':
+            members = []
+            for did in payload_['members']:
+                if ':' in did:
+                    did = did.split(':')[-1]
+                members.append(did)
+            message = payload_['message']
+            try:
+                await gossyp(members, message)
+            except Exception as e:
+                raise
     except RuntimeError as e:
         msg = ''
         for arg in e.args:
@@ -235,12 +315,14 @@ async def action(request: Request):
 
 @app.websocket("/")
 async def events(websocket: WebSocket):
+    cached_gossyp_ids = []
     await websocket.accept()
     listener = await sirius_sdk.subscribe()
     async for event in listener:
         if isinstance(event.message, sirius_sdk.aries_rfc.Message):
             content = event.message.content
             print(f'Received text message: {content}')
+            print(event.message.type)
             their_vk = event.sender_verkey
             my_vk = event.recipient_verkey
             conn_ = await get_my_connections(their_verkey=their_vk, my_verkey=my_vk)
@@ -255,6 +337,24 @@ async def events(websocket: WebSocket):
                 })
             else:
                 print(f'Not found P2P for verkey: {their_vk}')
+        elif event.message.type == MSG_TYP_GOSSYP:
+            print('Received Gossyp')
+            if event.message.id in cached_gossyp_ids:
+                print('Ignore cause of message with same ID already processed...')
+            else:
+                print(json.dumps(event.message, indent=2, sort_keys=True))
+                members = event.message.get('members', [])
+                content = event.message.get('content', None)
+                from_ = event.pairwise
+                await websocket.send_json({
+                    'topic': 'messaging.gossyp',
+                    'payload': {
+                        'msg': content,
+                        'members': members,
+                        'from': from_.their.did if from_ else None
+                    }
+                })
+                cached_gossyp_ids.append(event.message.id)
 
 
 @app.get("/health_check")

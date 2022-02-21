@@ -9,6 +9,7 @@
     <script src="{{ static.axios }}"></script>
     <script src="{{ static.jquery }}"></script>
     <script src="{{ static.jseditor }}"></script>
+    <script src="https://cdn.zoomcharts-cloud.com/1/stable/zoomcharts.js"></script>
 
     <style>
         div.json{
@@ -255,6 +256,43 @@
             </div>
           </div>
         </div>
+        <!----- Gossyp Modal --->
+        <div class="modal" id="modal-gossyp" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
+          <div class="modal-dialog" role="document" style="margin-top:0%; max-width: 70%;">
+            <div class="modal-content">
+              <div class="modal-header">
+                <h5 class="text-primary modal-title" >Gossyp</h5>
+                <button @click.prevent="detach_from_gossyp" class="btn btn-primary" style="float: right;">Close</button>
+              </div>
+              <div class="modal-body">
+                  <h6 class="text-danger">[[modal_gossyp.error]]</h6>
+                  <table style="width: 100%;">
+                      <tr>
+                          <td style="width: 30%;">
+                              <span class="text-primary">Members:</span>
+                              <select v-model="modal_gossyp.new_member" style="width: 50%;">
+                                  <option v-for="option in gossyp_avail_members" v-bind:value="option.did">
+                                    [[ option.label ]]
+                                  </option>
+                              </select>
+                              <button @click.prevent="add_new_member_to_gossyp(modal_gossyp.new_member)" v-bind:disabled="!modal_gossyp.new_member" class="btn btn-outline-primary btn-sm" title="Add member">+</button>
+                              <div class="d-flex row" style="width: 90%;">
+                                  <span class="alert-primary" v-for="did in modal_gossyp.members" style="border-radius: 5px; margin: 5px;">
+                                      did:dov:[[did]]
+                                      <span class="alert-success small" style="cursor:pointer;">ping</span>
+                                  </span>
+                              </div>
+                              <textarea id="messaging-gossyp" readonly="readonly" style="min-height: 200px;width: 90%;float: left;"></textarea>
+                              <input type="text" v-model="modal_gossyp.message"/>
+                              <button @click.prevent="fire_gossyp" class="btn btn-danger" v-bind:disabled="!modal_gossyp.message || modal_gossyp.members.length == 0">Send</button>
+                          </td>
+                          <td><div id="gossyp-map" class="row"></div></td>
+                      </tr>
+                  </table>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <div class="container px-5">
             <div class="row gx-5 align-items-lg-start">
@@ -418,7 +456,11 @@
                                         <div v-for="cred in credentials" class="card border-primary" style="margin-bottom: 5px;">
                                           <div class="card-body">
                                             <h5 class="card-title text-primary">Credential</h5>
-                                            <h6 class="card-subtitle mb-4 text-muted alert-dark p-1">Issuer: [[cred.issuer]]</h6>
+                                            <h6 class="card-subtitle mb-4 text-muted alert-dark p-1">
+                                                <b>Issuer:</b> [[cred.issuer]]
+                                                <br/>
+                                                <b>Issuer DID:</b> [[cred.issuer_did]]
+                                            </h6>
                                             <span class="text-primary">Preview:</span>
                                             <table style="margin-left: 30px;font-size: 80%;">
                                                 <tr v-for="attr in cred.preview" style="margin-bottom: 10px; ">
@@ -440,9 +482,15 @@
                         <div class="row justify-content-center">
                             <div class="col-md-14">
                                 <div class="card">
-                                    <div class="card-header">P2P Networks</div>
+                                    <div class="card-header">Networks</div>
                                     <div class="card-body">
-                                        2
+                                        <div class="d-flex justify-content-center" style="padding-bottom: 10px;">
+                                              <button @click="attach_to_gossyp" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
+                                                <span class="d-flex align-items-center">
+                                                    <span class="small">Gossyp</span>
+                                                </span>
+                                              </button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -483,9 +531,12 @@
     let schemas = {{ schemas|tojson(indent=2) }};
     let credentials = {{ credentials|tojson(indent=2) }};
     let default_proof_request = {{ default_proof_request|tojson(indent=2) }};
+    let gossyp_demo = {{ gossyp_demo|tojson(indent=2) }};
+    let conn_graph = {{ conn_graph|tojson(indent=2) }}
 
     var js_editors = {
-        proof_editor: null
+        proof_editor: null,
+        gossyp_graph: null
     }
 
     app = new Vue({
@@ -554,6 +605,12 @@
                 error: null,
                 result_success: null,
                 result_msg: null
+            },
+            modal_gossyp: {
+                message: '',
+                members: [],
+                new_member: null,
+                error: null
             }
         },
         computed: {
@@ -565,7 +622,22 @@
                     }
                 }
                 return false;
-            }
+            },
+            gossyp_avail_members: function(){
+                let collection = [];
+                let processed_dids = [];
+                for(let i=0; i<this.connections.length;i++) {
+                    let conn = this.connections[i];
+                    if (!processed_dids.includes(conn.their.did)){
+                        if(!this.modal_gossyp.members.includes(conn.their.did)) {
+                            let item = {did: conn.their.did, label: conn.their.label};
+                            collection.push(item);
+                        }
+                        processed_dids.push(conn.their.did);
+                    }
+                }
+                return collection;
+            },
         },
         methods: {
             // ====== System ===========
@@ -617,6 +689,15 @@
                     }
                 }
                 return conn;
+            },
+            is_me: function(some_did){
+                for(let i=0; i<this.connections.length;i++) {
+                    let item = this.connections[i];
+                    if (item.me.did === some_did) {
+                        return true;
+                    }
+                }
+                return false;
             },
             process_message: function(their_did, msg){
                 if (their_did == this.modal_messaging.their_did) {
@@ -1062,7 +1143,176 @@
                     console.log('======== ERROR ========')
                     console.log(error.data.detail);
                 });
-            }
+            },
+            // ====== GOSSYP ========
+            attach_to_gossyp: function(){
+                if (!js_editors.gossyp_graph) {
+                    js_editors.gossyp_graph = new NetChart({
+                        container: document.getElementById("gossyp-map"),
+                        area: {
+                            height: 800,
+                            style: {fillColor: "rgba(14,33,40,0.9)"},
+                        },
+                        data: {preloaded: conn_graph},
+                        auras: {
+                            cellSize: 10,
+                            overlap: true,
+                            enabled: true,
+                            drawLimit: 0.8,
+                            intensity: 12,
+                            defaultStyle: {
+                                showInLegend: true,
+                                shadowBlur: 35
+                            },
+                            defaultColors: [
+                                "rgba(47,195,47,0.3)",
+                                "rgba(213,66,155,0.3)",
+                                // "rgba(28,124,213,0.3)",
+                                // "rgba(86,185,247,0.3)",
+                                "rgba(10,232,235,0.3)"
+                            ],
+                            /*
+                            style: {
+                                "Подача и уборка вагона": {
+                                    fillColor: "rgba(254,248,17,0.6)",
+                                    shadowColor: "rgba(254,248,17,0.6)",
+                                },
+                                "Оформление груза": {
+                                    fillColor: "rgba(53,135,136,0.3)",
+                                    shadowColor: "rgba(53,135,136,0.7)",
+                                },
+                                "Оплата накладной": {
+                                    fillColor: "rgba(255,255,255,0.7)",
+                                    shadowColor: "rgba(255,255,255,0.5)",
+                                }
+                            }
+                            */
+                        },
+                        style: {
+                            nodeLabel: {aspectRatio: 5},
+                            multilinkSpacing: 35,
+                            linkStrengthAutoScaling: "logaritmic",
+                            nodeStyleFunction: function (node) {
+                                node.aura = node.data.auras;
+                                if (node.data.human) {
+                                    node.image = "/static/robots/ktz/human.png";
+                                } else {
+                                    node.image = "/static/robots/ktz/engine.png";
+                                }
+                                node.label = node.data.name;
+                                node.labelStyle.padding = 1;
+                            },
+                            linkStyleFunction: function (link) {
+                                link.fromDecoration = "circle";
+                                link.toDecoration = "arrow";
+                                link.label = link.data.label;
+                                link.length = 3;
+                                link.labelStyle.rotateWithLink = true;
+                                if (link.data.request) {
+                                    link.fillColor = "red";
+                                    link.labelStyle.textStyle.fillColor = "red";
+                                } else {
+                                    // link.fillColor = "blue";
+                                }
+
+                            },
+                            node: {
+                                radius: 30,
+                                imageCropping: true,
+                                shadowBlur: 15,
+                                shadowColor: "#262626",
+                                fillColor: "rgba(44,233,233,0.8)"
+                            },
+                            nodeHovered: {
+                                shadowColor: "white",
+                                shadowBlur: 15,
+                            },
+                            nodeSelected: {
+                                lineColor: null
+                            },
+                            selection: {
+                                fillColor: null,
+                                lineColor: null
+                            },
+                            nodeFocused: {
+                                fillColor: "white",
+                                lineColor: null,
+                                shadowColor: "white",
+                                shadowBlur: 10
+                            }
+                        },
+                        legend: {
+                            enabled: true,
+                            padding: 6,
+                            marker: {size: 22},
+                            maxLineSymbols: 12
+                        },
+                        navigation: {
+                            mode: "showall", // "manual", "showall" or "focusnodes",
+                            focusNodeExpansionRadius: 2,
+                            focusNodeTailExpansionRadius: 0.3,
+                            numberOfFocusNodes: 1,
+                            expandOnClick: true
+                        },
+                        theme: NetChart.themes.dark
+                    });
+                }
+                $('#modal-gossyp').show();
+            },
+            detach_from_gossyp: function (){
+                $('#modal-gossyp').hide();
+            },
+            add_new_member_to_gossyp: function(their_did){
+                this.modal_gossyp.members.push(their_did);
+                this.modal_gossyp.new_member = null;
+                let conn = this.get_connection(their_did);
+                if (!this.modal_gossyp.members.includes(conn.me.did)) {
+                    this.modal_gossyp.members.push(conn.me.did);
+                }
+                let data = {
+                    nodes: [
+                        { id: their_did, loaded: true, name: conn.their.label },
+                    ], links: [
+                        { id: their_did, from: 'me', to: their_did, label: "P2P" }
+                    ]
+                };
+                js_editors.gossyp_graph.addData(data);
+            },
+            fire_gossyp: function(){
+                let self = this;
+                this.modal_gossyp.error = "";
+                axios.post(
+                    '', {
+                        action: 'gossyp',
+                        payload: {
+                            members: this.modal_gossyp.members,
+                            message: this.modal_gossyp.message
+                        }
+                    }
+                ).then(function(response){
+                    console.log(response.data);
+                    let msg = self.modal_gossyp.message;
+                    self.modal_gossyp.message = "";
+                    //json-document-proof
+                    let s = 'Me' + ': ' + msg + '\n';
+                    $('#messaging-gossyp').append(s);
+                }).catch(function (error) {
+                    self.modal_gossyp.error = error.data.detail;
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            },
+            process_gossyp: function(members, msg, from){
+                for (let i=0; i<members.length; i++) {
+                    let their_did = members[i];
+                    if (!this.modal_gossyp.members.includes(their_did)) {
+                        this.modal_gossyp.members.push(their_did);
+                    }
+                }
+                //
+                let s = from + ': ' + msg + '\n';
+                $('#messaging-gossyp').append(s);
+            },
         },
         beforeMount(){
             let self = this;
@@ -1084,6 +1334,9 @@
                     let payload = body.payload;
                     if (topic === 'messaging.rcv') {
                         self.process_message(payload.their_did, payload.msg);
+                    }
+                    else if (topic === 'messaging.gossyp') {
+                        self.process_gossyp(payload.members, payload.msg, payload.from);
                     }
                 };
                 events_socket.onerror = function (error) {
