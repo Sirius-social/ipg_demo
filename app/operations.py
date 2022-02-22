@@ -1,7 +1,7 @@
 import json
 import logging
 import hashlib
-from typing import Optional, List
+from typing import Optional, List, Union
 
 import sirius_sdk
 from sirius_sdk.agent.wallet.abstract import NYMRole as ActorRole
@@ -11,7 +11,8 @@ from sirius_sdk.agent.ledger import Schema, SchemaFilters, CredentialDefinition
 from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError, WalletItemAlreadyExists
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import ProposedAttrib
 
-from didcomm.const import MSG_TYP_GOSSYP
+import settings
+from didcomm.const import *
 from settings import DKMS_NETWORK, STEWARD_DID, SDK_STEWARD, MASTER_SECRET_ID, TITLE
 
 
@@ -143,7 +144,8 @@ async def reset():
     # delete connections
     my_connections = await get_my_connections()
     for item in my_connections:
-        await sirius_sdk.NonSecrets.delete_wallet_record(CONNECTIONS_TYPE, item.their.did)
+        conn_id = build_connection_id(item.their.did, item.me.did)
+        await sirius_sdk.NonSecrets.delete_wallet_record(CONNECTIONS_TYPE, conn_id)
         pass
     pass
 
@@ -179,8 +181,9 @@ async def register_connection(p2p: sirius_sdk.Pairwise):
         'their_did': p2p.their.did, 'their_verkey': p2p.their.verkey
     }
     try:
+        conn_id = build_connection_id(p2p.their.did, p2p.me.did)
         await sirius_sdk.NonSecrets.add_wallet_record(
-            type_=CONNECTIONS_TYPE, id_=tags['their_did'], value=json.dumps(p2p.metadata),
+            type_=CONNECTIONS_TYPE, id_=conn_id, value=json.dumps(p2p.metadata),
             tags=tags
         )
     except WalletItemAlreadyExists:
@@ -205,6 +208,10 @@ async def store_schema_in_wallet(did: str, name: str, ver: str, schema: Schema):
 
 def build_schema_tag_name_for_cred_def(cred_def_id: str):
     return f'cred_def_{cred_def_id}'
+
+
+def build_connection_id(their_did: str, my_did: str) -> str:
+    return f'{their_did}:{my_did}'
 
 
 async def register_cred_def_for_schema(cred_def_id: str, schema_id: str):
@@ -400,14 +407,97 @@ async def gossyp(members: list, msg: str = None):
             logging.error(f'Not found P2P for DID: {member}')
 
 
+def calc_json_hash(value: Union[list, dict]) -> str:
+    js = json.dumps(value, sort_keys=True)
+    hashed = hashlib.sha256(js.encode()).hexdigest()
+    return hashed
+
+
+async def update_graph(graph: dict, participants: dict) -> dict:
+    nodes = graph.get('nodes', [])
+    links = graph.get('links', [])
+    my_aura = settings.TITLE
+    nodes_as_dict = {item['id']: item for item in nodes}
+    links_as_dict = {item['id']: item for item in links}
+    for did, p2p in participants.items():
+        if did in nodes_as_dict:
+            auras = nodes_as_dict[did].get('auras', [])
+            if my_aura not in auras:
+                auras.append(my_aura)
+                nodes_as_dict[did]['auras'] = auras
+        else:
+            nodes_as_dict[did] = {
+                "id": p2p.their.did,
+                "loaded": True,
+                "name": p2p.their.label,
+                "auras": [my_aura]
+            }
+        my_did = p2p.me.did
+        if my_did in nodes_as_dict:
+            auras = nodes_as_dict[my_did].get('auras', [])
+            if my_aura not in auras:
+                auras.append(my_aura)
+                nodes_as_dict[did]['auras'] = auras
+        else:
+            nodes_as_dict[my_did] = {
+                "id": my_did,
+                "loaded": True,
+                "name": TITLE,
+                "auras": [my_aura]
+            }
+        link_id = p2p.me.did + '>' + p2p.their.did
+        if link_id not in links_as_dict:
+            links_as_dict[link_id] = {
+                "id": link_id,
+                "from": p2p.me.did, "to": p2p.their.did, "label": "P2P"
+            }
+        '''
+        nodes: [
+            { id: their_did, loaded: true, name: conn.their.label, auras: "{{ auras_my_connections }}" },
+        ], links: [
+            { id: their_did, from: 'me', to: their_did, label: "P2P" }
+        ]
+        '''
+    nodes = [value for key, value in nodes_as_dict.items()]
+    links = [value for key, value in links_as_dict.items()]
+    graph['nodes'] = nodes
+    graph['links'] = links
+    return graph
+
+
+async def fire_route(their_did: str, route: list = None) -> Optional[dict]:
+    p2p = await sirius_sdk.PairwiseList.load_for_did(their_did)
+    if p2p:
+        participants = {their_did: p2p}
+        graph = await update_graph(graph={}, participants=participants)
+        print(f'Found P2P: {their_did}')
+        return graph
+    else:
+        route = route or []
+        my_connections = await get_my_connections()
+        for p2p in my_connections:
+            if their_did not in (p2p.their.did, p2p.me.did):
+                cur_route = [item for item in route]
+                cur_route.append(p2p.me.did)
+                msg = sirius_sdk.messaging.Message({
+                    '@type': MSG_TYP_TRACE_REQ,
+                    'route': cur_route,
+                    'did': their_did
+                })
+                await sirius_sdk.send_to(msg, p2p)
+        return None
+
+
 async def foreground():
+    cached_gossyp_ids = []
+    cached_trace_ids = []
     try:
         await sirius_sdk.AnonCreds.prover_create_master_secret(MASTER_SECRET_ID)
     except AnoncredsMasterSecretDuplicateNameError as e:
         pass
     my_endpoint = await get_my_endpoint()
     dkms = await sirius_sdk.ledger(DKMS_NETWORK)
-    listener = await sirius_sdk.subscribe(group_id='IPG_DEMO_FOREGROUND')
+    listener = await sirius_sdk.subscribe()  # group_id='IPG_DEMO_FOREGROUND'
     async for event in listener:
         if isinstance(event.message, sirius_sdk.aries_rfc.ConnRequest):
             # check if it is self invitation
@@ -455,6 +545,75 @@ async def foreground():
                 print(f'Verify proof status: {success}')
             else:
                 print('ProofRequest pairwise is Empty')
-        else:
-            pass
+        elif event.message.type == MSG_TYP_TRACE_REQ:
+            print(f'========== Received Route Request============')
+            print(json.dumps(event.message, indent=2, sort_keys=True))
+            if event.message.id in cached_trace_ids:
+                print('Ignore trace request')
+            else:
+                did = event.message.get('did', None)
+                route = event.message.get('route', [])
+                if did and route:
+                    p2p = await sirius_sdk.PairwiseList.load_for_did(did)
+                    if p2p:
+                        print('Found P2P, make route response')
+                        graph = await fire_route(did, route)
+                        prev_did = route[-1]
+                        prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
+                        if prev_p2p:
+                            resp = sirius_sdk.messaging.Message({
+                                '@id': event.message.id,
+                                '@type': MSG_TYP_TRACE_RESP,
+                                'route': route,
+                                'did': did,
+                                'graph': graph
+                            })
+                            await sirius_sdk.send_to(resp, prev_p2p)
+                        else:
+                            print(f'Not found prev_p2p for DID: {prev_did}')
+                    else:
+                        await fire_route(did, route)
 
+        elif event.message.type == MSG_TYP_TRACE_RESP:
+            print(f'========== Received Route Response============')
+            print(json.dumps(event.message, indent=2, sort_keys=True))
+            route = event.message.get('route', [])
+            prev_route = []
+            for did in route:
+                p2p = await sirius_sdk.PairwiseList.load_for_did(did)
+                if p2p:
+                    print(f'found p2p for did: {did}')
+                    if prev_route:
+                        prev_did = prev_route[-1]
+                        print(f'prev route did: {prev_did}')
+                        prev_p2p = sirius_sdk.PairwiseList.load_for_did(prev_did)
+                        if prev_p2p:
+                            await sirius_sdk.send_to(event.message, prev_p2p)
+                        else:
+                            print(f'not found p2p for did: {prev_did}')
+                else:
+                    prev_route.append(did)
+        elif event.message.type == MSG_TYP_GOSSYP:
+            if event.message.id not in cached_gossyp_ids:
+                print(f'========== Re-Raise Gossyp Message with ID: {event.message.id}')
+                cached_gossyp_ids.append(event.message.id)
+                members = event.message.get('members', [])
+                reraise_members = {}
+                for did in members:
+                    p2p = await sirius_sdk.PairwiseList.load_for_did(did)
+                    if p2p:
+                        reraise_members[did] = p2p
+                print('Re-Raise members: ' + str(list(reraise_members.keys())))
+                old_graph_hash = None
+                new_graph_hash = None
+                if reraise_members:
+                    graph = event.message.get('graph', {})
+                    old_graph_hash = calc_json_hash(graph)
+                    graph = await update_graph(graph, reraise_members)
+                    new_graph_hash = calc_json_hash(graph)
+                    event.message['graph'] = graph
+                for did, p2p in reraise_members.items():
+                    if did in (event.pairwise.their.did, event.pairwise.me.did):
+                        pass
+                    else:
+                        await sirius_sdk.send_to(event.message, p2p)

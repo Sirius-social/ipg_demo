@@ -19,7 +19,7 @@ from starlette.responses import RedirectResponse
 
 import settings
 from app.settings import URL_STATIC
-from didcomm.const import MSG_TYP_GOSSYP
+from didcomm.const import MSG_TYP_GOSSYP, MSG_TYP_TRACE_RESP
 from operations import *
 
 
@@ -63,13 +63,14 @@ GOSSYP_DEMO = {
 }
 
 
-AURAS_MY_CONNECTIONS = 'My connections'
+AURAS_MY_CONNECTIONS = settings.TITLE
+NODE_ID_ME = 'me'
 
 
 def build_connection_graph(connections: list) -> dict:
     nodes = [
         {
-            "id": "me",
+            "id": NODE_ID_ME,
             "human": False,
             "name": "MySelf",
             "loaded": True,
@@ -302,6 +303,14 @@ async def action(request: Request):
                 await gossyp(members, message)
             except Exception as e:
                 raise
+        elif action_ == 'route':
+            their_did = payload_['their_did']
+            graph = await fire_route(their_did)
+            if graph:
+                graph = await refresh_graph(graph)
+                return {'graph': graph, 'pending': False}
+            else:
+                return {'graph': None, 'pending': True}
     except RuntimeError as e:
         msg = ''
         for arg in e.args:
@@ -313,9 +322,38 @@ async def action(request: Request):
         return {'success': True}
 
 
+async def refresh_graph(graph: dict) -> dict:
+    my_dids = []
+    my_identities = await get_my_identities()
+    for item in my_identities:
+        tags = item['tags']
+        did = tags["did"]
+        my_dids.append(did)
+    nodes = graph.get('nodes', [])
+    updated_nodes = []
+    for node in nodes:
+        did = node['id']
+        if did not in my_dids:
+            updated_nodes.append(node)
+    links = graph.get('links', [])
+    updated_links = []
+    for link in links:
+        from_ = link['from']
+        to_ = link['to']
+        if from_ in my_dids:
+            link['from'] = NODE_ID_ME
+        if to_ in my_dids:
+            link['to'] = NODE_ID_ME
+        updated_links.append(link)
+    graph['nodes'] = updated_nodes
+    graph['links'] = updated_links
+    return graph
+
+
 @app.websocket("/")
 async def events(websocket: WebSocket):
     cached_gossyp_ids = []
+    cached_gossyp_graph_hashes = {}
     await websocket.accept()
     listener = await sirius_sdk.subscribe()
     async for event in listener:
@@ -337,29 +375,71 @@ async def events(websocket: WebSocket):
                 })
             else:
                 print(f'Not found P2P for verkey: {their_vk}')
+        elif event.message.type == MSG_TYP_TRACE_RESP:
+            print('Received Trace response')
+            route = event.message.get('route', [])
+            graph = event.message.get('graph', {})
+            if route and graph:
+                did = route[0]
+                my_conn = await get_my_connections()
+                my_dids = [p2p.me.did for p2p in my_conn]
+                participants = {p2p.their.did: p2p for p2p in my_conn}
+                graph = await update_graph(graph, participants)
+                graph = await refresh_graph(graph)
+                if did in my_dids:
+                    await websocket.send_json({
+                        'topic': 'gossyp.graph',
+                        'payload': {
+                            'graph': graph,
+                        }
+                    })
         elif event.message.type == MSG_TYP_GOSSYP:
             print('Received Gossyp')
             if event.message.id in cached_gossyp_ids:
-                print('Ignore cause of message with same ID already processed...')
+                graph = event.message.get('graph', {})
+                graph_hash = calc_json_hash(graph)
+                if cached_gossyp_graph_hashes[event.message.id] != graph_hash:
+                    cached_gossyp_graph_hashes[event.message.id] = graph_hash
+                    graph = event.message.get('graph', None)
+                    if graph:
+                        graph = await refresh_graph(graph)
+                        await websocket.send_json({
+                            'topic': 'gossyp.graph',
+                            'payload': {
+                                'graph': graph,
+                            }
+                        })
+                        print('Raised graph update')
+                else:
+                    print('Ignore cause of message with same ID already processed...')
             else:
                 print(json.dumps(event.message, indent=2, sort_keys=True))
                 members = event.message.get('members', [])
                 content = event.message.get('content', None)
-                from_ = event.pairwise
+                graph = event.message.get('graph', None)
+
+                graph_hash = calc_json_hash(graph)
+                cached_gossyp_graph_hashes[event.message.id] = graph_hash
+
+                from_p2p = event.pairwise
+
+                if graph:
+                    graph = await refresh_graph(graph)
                 await websocket.send_json({
                     'topic': 'messaging.gossyp',
                     'payload': {
                         'msg': content,
                         'members': members,
-                        'from': from_.their.did if from_ else None
+                        'graph': graph,
+                        'from': from_p2p.their.did if from_p2p else None
                     }
                 })
                 cached_gossyp_ids.append(event.message.id)
 
 
 @app.get("/health_check")
-async def health_check():
-    return {"utc": datetime.utcnow().isoformat()}
+async def health_check(request: Request):
+    return {"utc": datetime.utcnow().isoformat(), "headers": request.headers}
 
 
 def thread_routine():

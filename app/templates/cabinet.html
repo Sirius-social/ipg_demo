@@ -279,7 +279,7 @@
                               <div class="d-flex row" style="width: 90%;">
                                   <span class="alert-primary" v-for="did in modal_gossyp.members" style="border-radius: 5px; margin: 5px;">
                                       did:dov:[[did]]
-                                      <span class="alert-success small" style="cursor:pointer;">ping</span>
+                                      <span @click="trace(did)" class="alert-success small" style="cursor:pointer;">route</span>
                                   </span>
                               </div>
                               <textarea id="messaging-gossyp" readonly="readonly" style="min-height: 200px;width: 90%;float: left;"></textarea>
@@ -412,10 +412,10 @@
                                         <div v-for="conn in connections" class="card" style="margin-bottom: 5px;">
                                           <div class="card-body">
                                             <h5 class="card-title">[[conn.their.label]]</h5>
-                                            <h6 class="card-subtitle mb-2 text-muted">
+                                            <h6 class="card-subtitle mb-2 text-muted" style="font-size: 90%;">
                                                 <span class="text-danger" style="padding: 3px;">Their</span>did:sov:[[conn.their.did]]
                                             </h6>
-                                              <h6 class="card-subtitle mb-2 text-muted">
+                                              <h6 class="card-subtitle mb-2 text-muted" style="font-size: 90%;">
                                                   <span class="text-success" style="padding: 3px;">Mine</span>did:sov:[[conn.me.did]]
                                               </h6>
                                             <a @click.prevent="view_json_document('DIDDoc', conn.their.did_doc, conn.their.label)" href="#" class="card-link">DIDDoc</a>
@@ -1269,11 +1269,12 @@
                 if (!this.modal_gossyp.members.includes(conn.me.did)) {
                     this.modal_gossyp.members.push(conn.me.did);
                 }
+                let link_id = conn.me.did + '>' + their_did;
                 let data = {
                     nodes: [
-                        { id: their_did, loaded: true, name: conn.their.label },
+                        { id: their_did, loaded: true, name: conn.their.label, auras: ["{{ auras_my_connections }}"] },
                     ], links: [
-                        { id: their_did, from: 'me', to: their_did, label: "P2P" }
+                        { id: link_id, from: 'me', to: their_did, label: "P2P" }
                     ]
                 };
                 js_editors.gossyp_graph.addData(data);
@@ -1302,7 +1303,7 @@
                     console.log(error.data.detail);
                 });
             },
-            process_gossyp: function(members, msg, from){
+            process_gossyp: function(members, msg, from, graph){
                 for (let i=0; i<members.length; i++) {
                     let their_did = members[i];
                     if (!this.modal_gossyp.members.includes(their_did)) {
@@ -1312,7 +1313,30 @@
                 //
                 let s = from + ': ' + msg + '\n';
                 $('#messaging-gossyp').append(s);
+                if (graph) {
+                    js_editors.gossyp_graph.addData(graph);
+                }
             },
+            trace: function(their_did) {
+                axios.post(
+                    '', {
+                        action: 'route',
+                        payload: {
+                            their_did: their_did,
+                        }
+                    }
+                ).then(function(response){
+                    console.log(response.data);
+                    let graph = response.data.graph;
+                    let pending = response.data.pending;
+                    if (!pending && graph) {
+                        js_editors.gossyp_graph.addData(graph);
+                    }
+                }).catch(function (error) {
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            }
         },
         beforeMount(){
             let self = this;
@@ -1336,7 +1360,11 @@
                         self.process_message(payload.their_did, payload.msg);
                     }
                     else if (topic === 'messaging.gossyp') {
-                        self.process_gossyp(payload.members, payload.msg, payload.from);
+                        self.process_gossyp(payload.members, payload.msg, payload.from, payload.graph);
+                    }
+                    else if (topic === 'gossyp.graph') {
+                        let grapg = payload.graph;
+                        js_editors.gossyp_graph.addData(grapg);
                     }
                 };
                 events_socket.onerror = function (error) {
