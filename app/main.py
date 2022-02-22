@@ -144,7 +144,10 @@ async def index(request: Request):
         credentials.append(cred)
     # WS
     ws = str(request.base_url)
-    ws = ws.replace('http://', 'ws://').replace('https://', 'wss://')
+    if settings.IS_PRODUCTION:
+        ws = ws.replace('http://', 'wss://').replace('https://', 'wss://')
+    else:
+        ws = ws.replace('http://', 'ws://').replace('https://', 'wss://')
     context = {
         'static': STATIC_CFG,
         'title': settings.TITLE,
