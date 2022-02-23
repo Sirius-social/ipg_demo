@@ -280,11 +280,15 @@ async def action(request: Request):
             if ':' in their_did:
                 their_did = their_did.split(':')[-1]
             cred_def_id = payload_.pop('cred_def_id')
-            values = dict(**payload_)
+            comment = payload_.pop('comment')
+            values = {}
+            for key, val in payload_.items():
+                if not key.startswith('__'):
+                    values[key] = val
             for name, value in values.items():
                 if not value:
                     raise HTTPException(status_code=400, detail=f"{name} attrib is Empty!")
-            await issue_cred(their_did, values, cred_def_id)
+            await issue_cred(their_did, values, cred_def_id, comment)
         elif action_ == 'verify':
             their_did = payload_.pop('their_did')
             if ':' in their_did:

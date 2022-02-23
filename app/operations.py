@@ -336,7 +336,7 @@ async def establish_connection_as_invitee(me: sirius_sdk.Pairwise.Me, my_label: 
         await register_connection(p2p)
 
 
-async def issue_cred(their_did: str, values: dict, cred_def_id: str):
+async def issue_cred(their_did: str, values: dict, cred_def_id: str, comment: str = 'Empty comment'):
     holder = await sirius_sdk.PairwiseList.load_for_did(their_did)
     if not holder:
         raise RuntimeError(f'Not found P2P for Their DID: {their_did}')
@@ -367,7 +367,7 @@ async def issue_cred(their_did: str, values: dict, cred_def_id: str):
         values=values,
         schema=schema,
         cred_def=cred_def,
-        comment='Hello Iam issuer',
+        comment=comment,
         preview=preview,
         cred_id=cred_id
     )

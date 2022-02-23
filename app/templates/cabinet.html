@@ -947,6 +947,9 @@
                         id: 'cred_def_id', label: 'Cred-Def',
                         value: initial_choice,
                         choices: choices
+                    },
+                    {
+                        id: 'comment', label: 'Comment'
                     }
                 ];
                 this.modal_field_changed('cred_def_id');
@@ -955,7 +958,7 @@
             modal_field_changed: function(id) {
                 console.log('ID: ' + id);
                 if (id == 'cred_def_id') {
-                    this.modal_window.form.fields = this.modal_window.form.fields.slice(0,2);
+                    this.modal_window.form.fields = this.modal_window.form.fields.slice(0,3);
                     let cred_def_id = this.modal_window.form.fields[1].value;
                     console.log('Cred-Def-ID: ' + cred_def_id);
                     //return;
@@ -972,9 +975,13 @@
                         }
                     }
                     if (schema) {
-                        let schema_fields = [];
+                        let schema_fields = [
+                            {
+                                id: '__schema_name', label: 'Name', value: schema.name, readonly: true
+                            }
+                        ];
                         schema_fields.push({
-                            id:'their_label', label: 'Issuer', value: cred_def.label, readonly: true
+                            id:'__their_label', label: 'Issuer', value: cred_def.label, readonly: true
                         });
                         for (let i=0; i<schema.attrNames.length; i++) {
                             let attr = schema.attrNames[i];
