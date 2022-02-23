@@ -417,6 +417,7 @@
                                             </h6>
                                               <h6 class="card-subtitle mb-2 text-muted" style="font-size: 90%;">
                                                   <span class="text-success" style="padding: 3px;">Mine</span>did:sov:[[conn.me.did]]
+                                                  <span class="text-black-50" style="padding: 3px;">[[get_my_label(conn.me.did)]]</span>
                                               </h6>
                                             <a @click.prevent="view_json_document('DIDDoc', conn.their.did_doc, conn.their.label)" href="#" class="card-link">DIDDoc</a>
                                             <a @click.prevent="open_messaging('Messaging', conn.their.label, conn.their.did)" href="#" class="card-link">
@@ -665,6 +666,19 @@
             },
             close_modal: function(){
                 $('#modal-window').hide();
+            },
+            get_my_label: function(did) {
+              let a = did.split(':');
+              let _did = a[a.length-1]
+              for (let i=0; i<this.identities.length; i++) {
+                  let me = this.identities[i];
+                  let a = me.did.split(':');
+                  let cur_did = a[a.length-1];
+                  if (cur_did === _did) {
+                      return me.label;
+                  }
+              }
+              return null
             },
             view_json_document: function(title, doc, text=null){
                 this.modal_json.title = title;
