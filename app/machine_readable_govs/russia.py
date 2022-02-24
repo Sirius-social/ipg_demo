@@ -19,77 +19,52 @@ doc = {
   ],
   "schemas": [
     {
-      "id": "Gk6YNB9x5w6FwhNBUKjUEY:2:Trade-License:1.0",
-      "name": "Trade Licence",
+      "id": "VbNrngVsD113FC5gWsHsC2:2:DualPurposeLicense:1.0",
+      "name": "Разрешение на лицензирование грузов 2-го назначения",
     },
     {
-      "id": "9MG2vmFLem8p4VBmcu3DRV:2:Tax-Payer:1.0",
-      "name": "Tax Payer license",
+      "id": "46rZgNsTms48s7wz7RqwHy:2:Cargo-License:2.0",
+      "name": "Разрешение Мин.пром.торга",
     }
-  ],
-  "cred_defs": [
-      {
-        "id": "Gk6YNB9x5w6FwhNBUKjUEY:3:CL:8974:EXPORTER",
-        "name": "Exporter License"
-      }
   ],
   "participants": [
     {
-      "name": "gov_uzb_trading_ministry",
-      "id": "did:sov:Gk6YNB9x5w6FwhNBUKjUEY",
+      "name": "gov_rus_border_service",
+      "id": "did:sov:VbNrngVsD113FC5gWsHsC2",
       "describe": {
-        "label": "Мин. торговли Узбекистана",
+        "label": "Погран. Служба РФ",
         "website": "issuinggovernmentsite.org",
         "email": "credential_manager@issuinggovernmentsite.org"
       }
     },
     {
-      "name": "gov_uzb_taxes_ministry",
-      "id": "did:sov:9MG2vmFLem8p4VBmcu3DRV",
+      "name": "gov_rus_trade_ministry",
+      "id": "did:sov:46rZgNsTms48s7wz7RqwHy",
       "describe": {
-        "label": "Налоговая служба респ. Узбекистан",
+        "label": "Мин. торговли РФ",
         "website": "issuinglabsite.com",
         "email": "credential_manager@issuinglabsite.com"
-      }
-    },
-    {
-      "name": "uzb_sulfur_manufacturer",
-      "id": "did:sov:Hzp6tiXwVbTwdU8eRWiN2M",
-      "describe": {
-        "label": "JSC UZBEKNEFTEGAZ",
-        "website": "issuinggovernmentsite.org",
-        "email": "credential_manager@issuinggovernmentsite.org"
       }
     }
   ],
   "roles": [
     "trader",
-    "exporter",
-    "licenser"
+    "dual_purpose_cargo_licenser"
   ],
   "permissions": [
     {
       "grant": ["trader"],
       "when": {
         "and": [
-          {"schema": "Trade Licence", "issuer": "gov_uzb_trading_ministry"},
-          {"schema": "Tax Payer license", "issuer": "gov_uzb_taxes_ministry"},
+          {"schema": "Разрешение Мин.пром.торга", "issuer": "gov_rus_trade_ministry"},
         ]
       }
     },
     {
-      "grant": ["licenser"],
+      "grant": ["dual_purpose_cargo_licenser"],
       "when": {
         "any": [
-          {"id": "did:sov:Hzp6tiXwVbTwdU8eRWiN2M"}
-        ]
-      }
-    },
-    {
-      "grant": ["exporter"],
-      "when": {
-        "any": [
-          {"cred_def": "Exporter License"}
+          {"schema": "Разрешение на лицензирование грузов 2-го назначения", "issuer": "gov_rus_border_service"},
         ]
       }
     }
