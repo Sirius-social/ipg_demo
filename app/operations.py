@@ -694,24 +694,29 @@ async def foreground():
         elif event.message.type == MSG_TYP_MRG_RESP:
             print(f'========== Received MRG response with ID: {event.message.id}')
             print(json.dumps(event.message, indent=2, sort_keys=True))
+
             route = event.message.get('route', [])
-            prev_route = []
-            my_conns = await get_my_connections()
-            for did in route:
-                search = [p2p for p2p in my_conns if p2p.me.did == did]
-                if search:
-                    p2p = search[0]
-                else:
-                    p2p = None
-                if p2p:
-                    print(f'found p2p for did: {did}')
-                    if prev_route:
-                        prev_did = prev_route[-1]
-                        print(f'prev route did: {prev_did}')
-                        prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
-                        if prev_p2p:
-                            await sirius_sdk.send_to(event.message, prev_p2p)
-                        else:
-                            print(f'not found p2p for did: {prev_did}')
-                else:
-                    prev_route.append(did)
+            route_as_set = list(set(route))
+            if len(route) != len(route_as_set):
+                print('Ignore MRG response cause of Loop')
+            else:
+                prev_route = []
+                my_conns = await get_my_connections()
+                for did in route:
+                    search = [p2p for p2p in my_conns if p2p.me.did == did]
+                    if search:
+                        p2p = search[0]
+                    else:
+                        p2p = None
+                    if p2p:
+                        print(f'found p2p for did: {did}')
+                        if prev_route:
+                            prev_did = prev_route[-1]
+                            print(f'prev route did: {prev_did}')
+                            prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
+                            if prev_p2p:
+                                await sirius_sdk.send_to(event.message, prev_p2p)
+                            else:
+                                print(f'not found p2p for did: {prev_did}')
+                    else:
+                        prev_route.append(did)
