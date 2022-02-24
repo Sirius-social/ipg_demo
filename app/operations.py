@@ -667,7 +667,12 @@ async def foreground():
             if doc:
                 roles = await extract_my_roles(doc)
                 graph = await build_mrg_graph(roles, event.pairwise)
+
                 init_route = event.message.get('route', [])
+                route_as_set = list(set(init_route))
+                if len(init_route) != len(route_as_set):
+                    print('Ignore MRG request cause of Loop')
+
                 msg = sirius_sdk.messaging.Message({
                     '@id': event.message.id,
                     '@type': MSG_TYP_MRG_RESP,
