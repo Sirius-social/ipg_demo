@@ -587,6 +587,7 @@ async def foreground():
             if event.message.id in cached_trace_ids:
                 print('Ignore trace request')
             else:
+                cached_trace_ids.append(event.message.id)
                 did = event.message.get('did', None)
                 route = event.message.get('route', [])
                 if did and route:
