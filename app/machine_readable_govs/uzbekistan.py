@@ -1,10 +1,10 @@
 doc = {
   "@context": ["https://github.com/hyperledger/aries-rfcs/blob/main/concepts/0430-machine-readable-governance-frameworks/context.jsonld"],
-  "name": "Uzbekistan Trading License",
+  "name": "Uzbekistan Gov Framework",
   "version": "0.2",
   "format": "1.0",
   "id": "<uuid>",
-  "description": "This document describes COVID health and travel governance for the nation of Aruba in a machine readable way.",
+  "description": "<TODO>",
   "last_updated": "2022-10-01",
   "docs_uri": "need_to_create",
   "data_uri": "need_to_create",

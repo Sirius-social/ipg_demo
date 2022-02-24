@@ -258,17 +258,18 @@
         </div>
         <!----- Gossyp Modal --->
         <div class="modal" id="modal-gossyp" style="background-color: rgba(0,0,0,0.3)" tabindex="-1" role="dialog" aria-labelledby="original" aria-hidden="true">
-          <div class="modal-dialog" role="document" style="margin-top:0%; max-width: 70%;">
+          <div class="modal-dialog" role="document" style="margin-top:0%; max-width: 80%;">
             <div class="modal-content">
               <div class="modal-header">
-                <h5 class="text-primary modal-title" >Gossyp</h5>
+                <h5 class="text-primary modal-title" >[[modal_gossyp.title]]</h5>
                 <button @click.prevent="detach_from_gossyp" class="btn btn-primary" style="float: right;">Close</button>
               </div>
               <div class="modal-body">
+                  <p>[[modal_gossyp.text]]</p>
                   <h6 class="text-danger">[[modal_gossyp.error]]</h6>
                   <table style="width: 100%;">
                       <tr>
-                          <td style="width: 30%;">
+                          <td v-if="modal_gossyp.mode ==1" style="width: 40%;">
                               <span class="text-primary">Members:</span>
                               <select v-model="modal_gossyp.new_member" style="width: 50%;">
                                   <option v-for="option in gossyp_avail_members" v-bind:value="option.did">
@@ -286,6 +287,21 @@
                               <input type="text" v-model="modal_gossyp.message"/>
                               <button @click.prevent="fire_gossyp" class="btn btn-danger" v-bind:disabled="!modal_gossyp.message || modal_gossyp.members.length == 0">Send</button>
                           </td>
+                          <td v-if="modal_gossyp.mode == 2" style="width: 40%;">
+                              <div class="mx-auto">
+                                  <span class="text-primary">Gov Framework:</span>
+                                  <select v-model="modal_gossyp.mrg_choice" style="width: 50%;">
+                                      <option value="none" disabled="disabled">
+                                          Select Gov Framework
+                                      </option>
+                                      <option v-for="option in modal_gossyp.mrg_choices" v-bind:value="option">
+                                        [[ option ]]
+                                      </option>
+                                  </select>
+                                  <button @click.prevent="fire_mrg" class="btn btn-danger">Run</button>
+                                  <div id="mrg-json-editor" style="width: 90%; min-height: 400px;max-height: 800px;background: black;overflow: auto;"></div>
+                              </div>
+                          </td>
                           <td><div id="gossyp-map" class="row"></div></td>
                       </tr>
                   </table>
@@ -293,6 +309,7 @@
             </div>
           </div>
         </div>
+
 
         <div class="container px-5">
             <div class="row gx-5 align-items-lg-start">
@@ -487,7 +504,7 @@
                                     <div class="card-body">
                                         <!--  Gossyps --->
                                         <div class="d-flex justify-content-center" style="padding-bottom: 10px;">
-                                              <button @click="attach_to_gossyp" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
+                                              <button @click="attach_to_gossyp(1)" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
                                                 <span class="d-flex align-items-center">
                                                     <span class="small">Gossyp</span>
                                                 </span>
@@ -495,7 +512,7 @@
                                         </div>
                                         <!--  Machine readable Gov --->
                                         <div class="d-flex justify-content-center" style="padding-bottom: 10px;">
-                                              <button @click="" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
+                                              <button @click="attach_to_gossyp(2)" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" title="Add Credential Definition">
                                                 <span class="d-flex align-items-center">
                                                     <span class="small">Machine-readable-Gov</span>
                                                 </span>
@@ -544,17 +561,33 @@
         });
     }
 
+    function makeid(length) {
+        var result           = '';
+        var characters       = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        var charactersLength = characters.length;
+        for ( var i = 0; i < length; i++ ) {
+          result += characters.charAt(Math.floor(Math.random() * charactersLength));
+       }
+       return result;
+    }
+
     let identities = {{ identities|tojson(indent=2) }};
     let connections = {{ connections|tojson(indent=2) }};
     let schemas = {{ schemas|tojson(indent=2) }};
     let credentials = {{ credentials|tojson(indent=2) }};
     let default_proof_request = {{ default_proof_request|tojson(indent=2) }};
+    /*
     let gossyp_demo = {{ gossyp_demo|tojson(indent=2) }};
-    let conn_graph = {{ conn_graph|tojson(indent=2) }}
+
+     */
+    let conn_graph = {{ conn_graph|tojson(indent=2) }};
+    let mrg_choices = {{mrg_choices|tojson()}};
 
     var js_editors = {
         proof_editor: null,
-        gossyp_graph: null
+        mrg_editor: null,
+        gossyp_graph: null,
+        mrg_graph: null
     }
 
     app = new Vue({
@@ -625,10 +658,16 @@
                 result_msg: null
             },
             modal_gossyp: {
+                title: 'Gossyp',
+                text: 'Gossyp-Text',
+                mode: 1,
                 message: '',
                 members: [],
                 new_member: null,
-                error: null
+                error: null,
+                mrg_choices: Object.keys(mrg_choices),
+                mrg_choice: 'none',
+                mrg_req_id: null
             }
         },
         computed: {
@@ -1183,7 +1222,22 @@
                 });
             },
             // ====== GOSSYP ========
-            attach_to_gossyp: function(){
+            attach_to_gossyp: function(mode){
+                let mode_changed = mode != this.modal_gossyp.mode;
+                this.modal_gossyp.mode = mode || 1;
+                if (this.modal_gossyp.mode == 2) {
+                    this.modal_gossyp.title = 'Machine-Readable Governance';
+                    this.modal_gossyp.text = 'Check compliance and find contragents';
+                }
+                else {
+                    this.modal_gossyp.title = 'Gossyp';
+                    this.modal_gossyp.text = 'Group messaging';
+                }
+                let graph_created = false;
+                // JS MRG Editors
+                if(!js_editors.mrg_editor) {
+                    js_editors.mrg_editor = new JsonEditor('#mrg-json-editor', {});
+                }
                 if (!js_editors.gossyp_graph) {
                     js_editors.gossyp_graph = new NetChart({
                         container: document.getElementById("gossyp-map"),
@@ -1294,6 +1348,16 @@
                         },
                         theme: NetChart.themes.dark
                     });
+                    graph_created = true;
+                }
+                if (mode_changed) {
+                    this.modal_gossyp.members = [];
+                    this.modal_gossyp.message = '';
+                    this.modal_gossyp.error = '';
+                    this.modal_gossyp.mrg_choice = 'none';
+                    if (!graph_created) {
+                        js_editors.gossyp_graph.reloadData();
+                    }
                 }
                 $('#modal-gossyp').show();
             },
@@ -1374,6 +1438,57 @@
                     console.log('======== ERROR ========')
                     console.log(error.data.detail);
                 });
+            },
+            close_mrg_modal: function(){
+                $('#modal-mrg').hide();
+            },
+            fire_mrg: function(){
+                let self = this;
+                this.modal_gossyp.error = "";
+                let content = js_editors.mrg_editor.$container.text();
+                let doc = null;
+                this.modal_gossyp.mrg_req_id = makeid(8);
+                try {
+                    doc = JSON.parse(content);
+                } catch (ex) {
+                    alert('Wrong JSON Format: ' + ex);
+                    return;
+                }
+                js_editors.gossyp_graph.reloadData();
+                axios.post(
+                    '', {
+                        action: 'mrg',
+                        payload: {
+                            doc: doc,
+                            req_id: this.modal_gossyp.mrg_req_id
+                        }
+                    }
+                ).then(function(response){
+                    console.log(response.data);
+
+                }).catch(function (error) {
+                    self.modal_gossyp.error = error.data.detail;
+                    console.log('======== ERROR ========')
+                    console.log(error.data.detail);
+                });
+            },
+        },
+        watch: {
+            'modal_gossyp.mrg_choice': function(new_val, old_val){
+                console.log('MRG doc changed');
+                console.log('Was: ' + old_val);
+                console.log('Set: ' + new_val);
+                let doc = null;
+                for (let i=0; i<this.modal_gossyp.mrg_choices.length; i++ ) {
+                    let name = this.modal_gossyp.mrg_choices[i];
+                    doc = mrg_choices[name];
+                    break;
+                }
+                if (doc) {
+                    setTimeout(function(){
+                        js_editors.mrg_editor = new JsonEditor('#mrg-json-editor', doc);
+                    }, 100);
+                }
             }
         },
         beforeMount(){
@@ -1403,6 +1518,15 @@
                     else if (topic === 'gossyp.graph') {
                         let grapg = payload.graph;
                         js_editors.gossyp_graph.addData(grapg);
+                    }
+                    else if (topic === 'mrg.graph') {
+                        let req_id = payload.req_id;
+                        let graph = payload.graph;
+                        if (req_id == self.modal_gossyp.mrg_req_id) {
+                            if (js_editors.gossyp_graph) {
+                                js_editors.gossyp_graph.addData(graph);
+                            }
+                        }
                     }
                 };
                 events_socket.onerror = function (error) {

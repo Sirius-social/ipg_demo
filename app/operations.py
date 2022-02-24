@@ -12,6 +12,7 @@ from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateName
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import ProposedAttrib
 
 import settings
+from machine_readable_govs.utils import extract_my_roles
 from didcomm.const import *
 from settings import DKMS_NETWORK, STEWARD_DID, SDK_STEWARD, MASTER_SECRET_ID, TITLE
 
@@ -465,6 +466,28 @@ async def update_graph(graph: dict, participants: dict) -> dict:
     return graph
 
 
+async def build_mrg_graph(my_roles: list, p2p: sirius_sdk.Pairwise) -> dict:
+    nodes = [
+        {
+            "id": p2p.me.did,
+            "loaded": True,
+            "name": TITLE,
+            "auras": my_roles
+        }
+    ]
+    link_id = p2p.me.did + '>' + p2p.their.did
+    links = [
+        {
+            "id": link_id,
+            "from": p2p.me.did, "to": p2p.their.did, "label": "P2P"
+        }
+    ]
+    return {
+        'nodes': nodes,
+        'links': links
+    }
+
+
 async def fire_route(their_did: str, route: list = None) -> Optional[dict]:
     p2p = await sirius_sdk.PairwiseList.load_for_did(their_did)
     if p2p:
@@ -486,6 +509,19 @@ async def fire_route(their_did: str, route: list = None) -> Optional[dict]:
                 })
                 await sirius_sdk.send_to(msg, p2p)
         return None
+
+
+async def fire_compliance(doc, req_id):
+    my_connections = await get_my_connections()
+    msg = sirius_sdk.messaging.Message({
+        '@id': req_id,
+        '@type': MSG_TYP_MRG_REQUEST,
+        'doc': doc,
+    })
+    for p2p in my_connections:
+        route = [p2p.me.did]
+        msg['route'] = route
+        await sirius_sdk.send_to(msg, p2p)
 
 
 async def foreground():
@@ -586,7 +622,7 @@ async def foreground():
                     if prev_route:
                         prev_did = prev_route[-1]
                         print(f'prev route did: {prev_did}')
-                        prev_p2p = sirius_sdk.PairwiseList.load_for_did(prev_did)
+                        prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
                         if prev_p2p:
                             await sirius_sdk.send_to(event.message, prev_p2p)
                         else:
@@ -617,3 +653,57 @@ async def foreground():
                         pass
                     else:
                         await sirius_sdk.send_to(event.message, p2p)
+        elif event.message.type == MSG_TYP_MRG_REQUEST:
+            print(f'========== Received MRG request with ID: {event.message.id}')
+            doc = event.message.get('doc')
+            if doc:
+                roles = await extract_my_roles(doc)
+                graph = await build_mrg_graph(roles, event.pairwise)
+                init_route = event.message.get('route', [])
+                msg = sirius_sdk.messaging.Message({
+                    '@id': event.message.id,
+                    '@type': MSG_TYP_MRG_RESP,
+                    'graph': graph,
+                    'route': init_route
+                })
+                await sirius_sdk.send_to(msg, event.pairwise)
+                my_connections = await get_my_connections()
+
+                req = sirius_sdk.messaging.Message({
+                    '@id': event.message.id,
+                    '@type': MSG_TYP_MRG_REQUEST,
+                    'doc': doc
+                })
+                print('re-send to participants')
+                for p2p in my_connections:
+                    if p2p.their.did != event.pairwise.their.did:
+                        route = [item for item in init_route]
+                        route.append(p2p.me.did)
+                        req['route'] = route
+                        await sirius_sdk.send_to(req, p2p)
+            else:
+                print('---- DOC is empty ---')
+        elif event.message.type == MSG_TYP_MRG_RESP:
+            print(f'========== Received MRG response with ID: {event.message.id}')
+            print(json.dumps(event.message, indent=2, sort_keys=True))
+            route = event.message.get('route', [])
+            prev_route = []
+            my_conns = await get_my_connections()
+            for did in route:
+                search = [p2p for p2p in my_conns if p2p.me.did == did]
+                if search:
+                    p2p = search[0]
+                else:
+                    p2p = None
+                if p2p:
+                    print(f'found p2p for did: {did}')
+                    if prev_route:
+                        prev_did = prev_route[-1]
+                        print(f'prev route did: {prev_did}')
+                        prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
+                        if prev_p2p:
+                            await sirius_sdk.send_to(event.message, prev_p2p)
+                        else:
+                            print(f'not found p2p for did: {prev_did}')
+                else:
+                    prev_route.append(did)

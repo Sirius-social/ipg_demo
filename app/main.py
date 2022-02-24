@@ -4,6 +4,7 @@ import random
 import logging
 import argparse
 import threading
+import uuid
 from time import sleep
 from urllib.parse import urljoin
 from datetime import datetime
@@ -21,6 +22,8 @@ import settings
 from app.settings import URL_STATIC
 from didcomm.const import MSG_TYP_GOSSYP, MSG_TYP_TRACE_RESP
 from operations import *
+from machine_readable_govs.uzbekistan import doc as mrg_uzbekistan
+from machine_readable_govs.russia import doc as mrg_russia
 
 
 app = FastAPI()
@@ -174,7 +177,11 @@ async def index(request: Request):
         }),
         'conn_graph': build_connection_graph(connections),
         'gossyp_demo': GOSSYP_DEMO,
-        'auras_my_connections': AURAS_MY_CONNECTIONS
+        'auras_my_connections': AURAS_MY_CONNECTIONS,
+        'mrg_choices': {
+            mrg_russia['name']: mrg_russia,
+            mrg_uzbekistan['name']: mrg_uzbekistan
+        }
     }
     response = templates.TemplateResponse(
         "cabinet.html",
@@ -318,6 +325,10 @@ async def action(request: Request):
                 return {'graph': graph, 'pending': False}
             else:
                 return {'graph': None, 'pending': True}
+        elif action_ == 'mrg':
+            doc = payload_['doc']
+            req_id = payload_['req_id']
+            await fire_compliance(doc, req_id)
     except RuntimeError as e:
         msg = ''
         for arg in e.args:
@@ -400,6 +411,18 @@ async def events(websocket: WebSocket):
                             'graph': graph,
                         }
                     })
+        elif event.message.type == MSG_TYP_MRG_RESP:
+            print('Received MRG')
+            print(json.dumps(event.message, indent=2, sort_keys=True))
+            graph = event.message.get('graph')
+            graph = await refresh_graph(graph)
+            await websocket.send_json({
+                'topic': 'mrg.graph',
+                'payload': {
+                    'graph': graph,
+                    'req_id': event.message.id
+                }
+            })
         elif event.message.type == MSG_TYP_GOSSYP:
             print('Received Gossyp')
             if event.message.id in cached_gossyp_ids:
