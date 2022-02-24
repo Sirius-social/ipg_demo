@@ -1,6 +1,8 @@
 import json
 import logging
 import hashlib
+import uuid
+
 from typing import Optional, List, Union
 
 import sirius_sdk
@@ -488,7 +490,7 @@ async def build_mrg_graph(my_roles: list, p2p: sirius_sdk.Pairwise) -> dict:
     }
 
 
-async def fire_route(their_did: str, route: list = None) -> Optional[dict]:
+async def fire_route(their_did: str, route: list = None, msg_id: str = None) -> Optional[dict]:
     p2p = await sirius_sdk.PairwiseList.load_for_did(their_did)
     if p2p:
         participants = {their_did: p2p}
@@ -503,6 +505,7 @@ async def fire_route(their_did: str, route: list = None) -> Optional[dict]:
                 cur_route = [item for item in route]
                 cur_route.append(p2p.me.did)
                 msg = sirius_sdk.messaging.Message({
+                    '@id': msg_id or uuid.uuid4().hex,
                     '@type': MSG_TYP_TRACE_REQ,
                     'route': cur_route,
                     'did': their_did
@@ -585,9 +588,10 @@ async def foreground():
             print(f'========== Received Route Request============')
             print(json.dumps(event.message, indent=2, sort_keys=True))
             route = event.message.get('route', [])
+            route_as_set = list(set(route))
             if event.message.id in cached_trace_ids:
                 print('Ignore trace request')
-            elif len(route) >= 2 and (route[0] == route[-1]):
+            elif len(route) != len(route_as_set):
                 print('Ignore trace request cause of Loop')
             else:
                 cached_trace_ids.append(event.message.id)
@@ -597,7 +601,7 @@ async def foreground():
                     p2p = await sirius_sdk.PairwiseList.load_for_did(did)
                     if p2p:
                         print('Found P2P, make route response')
-                        graph = await fire_route(did, route)
+                        graph = await fire_route(did, route, msg_id=event.message.id)
                         prev_did = route[-1]
                         prev_p2p = await sirius_sdk.PairwiseList.load_for_did(prev_did)
                         if prev_p2p:
@@ -612,7 +616,7 @@ async def foreground():
                         else:
                             print(f'Not found prev_p2p for DID: {prev_did}')
                     else:
-                        await fire_route(did, route)
+                        await fire_route(did, route, msg_id=event.message.id)
 
         elif event.message.type == MSG_TYP_TRACE_RESP:
             print(f'========== Received Route Response============')
