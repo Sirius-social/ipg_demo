@@ -584,8 +584,11 @@ async def foreground():
         elif event.message.type == MSG_TYP_TRACE_REQ:
             print(f'========== Received Route Request============')
             print(json.dumps(event.message, indent=2, sort_keys=True))
+            route = event.message.get('route', [])
             if event.message.id in cached_trace_ids:
                 print('Ignore trace request')
+            elif len(route) >= 2 and (route[0] == route[-1]):
+                print('Ignore trace request cause of Loop')
             else:
                 cached_trace_ids.append(event.message.id)
                 did = event.message.get('did', None)
