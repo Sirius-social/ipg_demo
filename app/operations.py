@@ -672,28 +672,28 @@ async def foreground():
                 route_as_set = list(set(init_route))
                 if len(init_route) != len(route_as_set):
                     print('Ignore MRG request cause of Loop')
+                else:
+                    msg = sirius_sdk.messaging.Message({
+                        '@id': event.message.id,
+                        '@type': MSG_TYP_MRG_RESP,
+                        'graph': graph,
+                        'route': init_route
+                    })
+                    await sirius_sdk.send_to(msg, event.pairwise)
+                    my_connections = await get_my_connections()
 
-                msg = sirius_sdk.messaging.Message({
-                    '@id': event.message.id,
-                    '@type': MSG_TYP_MRG_RESP,
-                    'graph': graph,
-                    'route': init_route
-                })
-                await sirius_sdk.send_to(msg, event.pairwise)
-                my_connections = await get_my_connections()
-
-                req = sirius_sdk.messaging.Message({
-                    '@id': event.message.id,
-                    '@type': MSG_TYP_MRG_REQUEST,
-                    'doc': doc
-                })
-                print('re-send to participants')
-                for p2p in my_connections:
-                    if p2p.their.did != event.pairwise.their.did:
-                        route = [item for item in init_route]
-                        route.append(p2p.me.did)
-                        req['route'] = route
-                        await sirius_sdk.send_to(req, p2p)
+                    req = sirius_sdk.messaging.Message({
+                        '@id': event.message.id,
+                        '@type': MSG_TYP_MRG_REQUEST,
+                        'doc': doc
+                    })
+                    print('re-send to participants')
+                    for p2p in my_connections:
+                        if p2p.their.did != event.pairwise.their.did:
+                            route = [item for item in init_route]
+                            route.append(p2p.me.did)
+                            req['route'] = route
+                            await sirius_sdk.send_to(req, p2p)
             else:
                 print('---- DOC is empty ---')
         elif event.message.type == MSG_TYP_MRG_RESP:
