@@ -1233,6 +1233,7 @@
                     this.modal_gossyp.title = 'Gossyp';
                     this.modal_gossyp.text = 'Group messaging';
                 }
+                this.modal_gossyp.title = this.modal_gossyp.title + ' ' + "{{title}}";
                 let graph_created = false;
                 // JS MRG Editors
                 if(!js_editors.mrg_editor) {
@@ -1481,8 +1482,10 @@
                 let doc = null;
                 for (let i=0; i<this.modal_gossyp.mrg_choices.length; i++ ) {
                     let name = this.modal_gossyp.mrg_choices[i];
-                    doc = mrg_choices[name];
-                    break;
+                    if (name == new_val) {
+                        doc = mrg_choices[name];
+                        break;
+                    }
                 }
                 if (doc) {
                     setTimeout(function(){
