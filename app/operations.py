@@ -530,6 +530,7 @@ async def fire_compliance(doc, req_id):
 async def foreground():
     cached_gossyp_ids = []
     cached_trace_ids = []
+    cached_mrg_resp = []
     try:
         await sirius_sdk.AnonCreds.prover_create_master_secret(MASTER_SECRET_ID)
     except AnoncredsMasterSecretDuplicateNameError as e:
@@ -702,9 +703,12 @@ async def foreground():
 
             route = event.message.get('route', [])
             route_as_set = list(set(route))
-            if len(route) != len(route_as_set):
+            if event.message.id in cached_mrg_resp:
+                print('Ignore MRG response cause of duplicate msg.id')
+            elif len(route) != len(route_as_set):
                 print('Ignore MRG response cause of Loop')
             else:
+                cached_mrg_resp.append(event.message.id)
                 prev_route = []
                 my_conns = await get_my_connections()
                 for did in route:
