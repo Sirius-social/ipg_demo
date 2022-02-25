@@ -372,99 +372,102 @@ async def refresh_graph(graph: dict) -> dict:
 async def events(websocket: WebSocket):
     cached_gossyp_ids = []
     cached_gossyp_graph_hashes = {}
-    await websocket.accept()
-    listener = await sirius_sdk.subscribe()
-    async for event in listener:
-        if isinstance(event.message, sirius_sdk.aries_rfc.Message):
-            content = event.message.content
-            print(f'Received text message: {content}')
-            print(event.message.type)
-            their_vk = event.sender_verkey
-            my_vk = event.recipient_verkey
-            conn_ = await get_my_connections(their_verkey=their_vk, my_verkey=my_vk)
-            if conn_:
-                p2p = conn_[0]
-                await websocket.send_json({
-                    'topic': 'messaging.rcv',
-                    'payload': {
-                        'msg': content,
-                        'their_did': p2p.their.did
-                    }
-                })
-            else:
-                print(f'Not found P2P for verkey: {their_vk}')
-        elif event.message.type == MSG_TYP_TRACE_RESP:
-            print('Received Trace response')
-            route = event.message.get('route', [])
-            graph = event.message.get('graph', {})
-            if route and graph:
-                did = route[0]
-                my_conn = await get_my_connections()
-                my_dids = [p2p.me.did for p2p in my_conn]
-                participants = {p2p.their.did: p2p for p2p in my_conn}
-                graph = await update_graph(graph, participants)
-                graph = await refresh_graph(graph)
-                if did in my_dids:
+    try:
+        await websocket.accept()
+        listener = await sirius_sdk.subscribe()
+        async for event in listener:
+            if isinstance(event.message, sirius_sdk.aries_rfc.Message):
+                content = event.message.content
+                print(f'Received text message: {content}')
+                print(event.message.type)
+                their_vk = event.sender_verkey
+                my_vk = event.recipient_verkey
+                conn_ = await get_my_connections(their_verkey=their_vk, my_verkey=my_vk)
+                if conn_:
+                    p2p = conn_[0]
                     await websocket.send_json({
-                        'topic': 'gossyp.graph',
+                        'topic': 'messaging.rcv',
                         'payload': {
-                            'graph': graph,
+                            'msg': content,
+                            'their_did': p2p.their.did
                         }
                     })
-        elif event.message.type == MSG_TYP_MRG_RESP:
-            print('Received MRG')
-            print(json.dumps(event.message, indent=2, sort_keys=True))
-            graph = event.message.get('graph')
-            graph = await refresh_graph(graph)
-            await websocket.send_json({
-                'topic': 'mrg.graph',
-                'payload': {
-                    'graph': graph,
-                    'req_id': event.message.id
-                }
-            })
-        elif event.message.type == MSG_TYP_GOSSYP:
-            print('Received Gossyp')
-            if event.message.id in cached_gossyp_ids:
+                else:
+                    print(f'Not found P2P for verkey: {their_vk}')
+            elif event.message.type == MSG_TYP_TRACE_RESP:
+                print('Received Trace response')
+                route = event.message.get('route', [])
                 graph = event.message.get('graph', {})
-                graph_hash = calc_json_hash(graph)
-                if cached_gossyp_graph_hashes[event.message.id] != graph_hash:
-                    cached_gossyp_graph_hashes[event.message.id] = graph_hash
-                    graph = event.message.get('graph', None)
-                    if graph:
-                        graph = await refresh_graph(graph)
+                if route and graph:
+                    did = route[0]
+                    my_conn = await get_my_connections()
+                    my_dids = [p2p.me.did for p2p in my_conn]
+                    participants = {p2p.their.did: p2p for p2p in my_conn}
+                    graph = await update_graph(graph, participants)
+                    graph = await refresh_graph(graph)
+                    if did in my_dids:
                         await websocket.send_json({
                             'topic': 'gossyp.graph',
                             'payload': {
                                 'graph': graph,
                             }
                         })
-                        print('Raised graph update')
-                else:
-                    print('Ignore cause of message with same ID already processed...')
-            else:
+            elif event.message.type == MSG_TYP_MRG_RESP:
+                print('Received MRG')
                 print(json.dumps(event.message, indent=2, sort_keys=True))
-                members = event.message.get('members', [])
-                content = event.message.get('content', None)
-                graph = event.message.get('graph', None)
-
-                graph_hash = calc_json_hash(graph)
-                cached_gossyp_graph_hashes[event.message.id] = graph_hash
-
-                from_p2p = event.pairwise
-
-                if graph:
-                    graph = await refresh_graph(graph)
+                graph = event.message.get('graph')
+                graph = await refresh_graph(graph)
                 await websocket.send_json({
-                    'topic': 'messaging.gossyp',
+                    'topic': 'mrg.graph',
                     'payload': {
-                        'msg': content,
-                        'members': members,
                         'graph': graph,
-                        'from': from_p2p.their.did if from_p2p else None
+                        'req_id': event.message.id
                     }
                 })
-                cached_gossyp_ids.append(event.message.id)
+            elif event.message.type == MSG_TYP_GOSSYP:
+                print('Received Gossyp')
+                if event.message.id in cached_gossyp_ids:
+                    graph = event.message.get('graph', {})
+                    graph_hash = calc_json_hash(graph)
+                    if cached_gossyp_graph_hashes[event.message.id] != graph_hash:
+                        cached_gossyp_graph_hashes[event.message.id] = graph_hash
+                        graph = event.message.get('graph', None)
+                        if graph:
+                            graph = await refresh_graph(graph)
+                            await websocket.send_json({
+                                'topic': 'gossyp.graph',
+                                'payload': {
+                                    'graph': graph,
+                                }
+                            })
+                            print('Raised graph update')
+                    else:
+                        print('Ignore cause of message with same ID already processed...')
+                else:
+                    print(json.dumps(event.message, indent=2, sort_keys=True))
+                    members = event.message.get('members', [])
+                    content = event.message.get('content', None)
+                    graph = event.message.get('graph', None)
+
+                    graph_hash = calc_json_hash(graph)
+                    cached_gossyp_graph_hashes[event.message.id] = graph_hash
+
+                    from_p2p = event.pairwise
+
+                    if graph:
+                        graph = await refresh_graph(graph)
+                    await websocket.send_json({
+                        'topic': 'messaging.gossyp',
+                        'payload': {
+                            'msg': content,
+                            'members': members,
+                            'graph': graph,
+                            'from': from_p2p.their.did if from_p2p else None
+                        }
+                    })
+                    cached_gossyp_ids.append(event.message.id)
+    except Exception as e:
+        print('WS Error: ' + repr(e))
 
 
 @app.get("/health_check")
