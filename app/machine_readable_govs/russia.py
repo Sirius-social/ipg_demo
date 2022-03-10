@@ -1,6 +1,6 @@
 doc = {
   "@context": ["https://github.com/hyperledger/aries-rfcs/blob/main/concepts/0430-machine-readable-governance-frameworks/context.jsonld"],
-  "name": "Russian Gov Framework",
+  "name": "Turkey Gov Framework",
   "version": "0.2",
   "format": "1.0",
   "id": "<uuid>",
@@ -20,28 +20,28 @@ doc = {
   "schemas": [
     {
       "id": "VbNrngVsD113FC5gWsHsC2:2:DualPurposeLicense:1.0",
-      "name": "Разрешение на лицензирование грузов 2-го назначения",
+      "name": "Permission for licensing cargoes of the 2nd destination",
     },
     {
       "id": "46rZgNsTms48s7wz7RqwHy:2:Cargo-License:2.0",
-      "name": "Разрешение Мин.пром.торга",
+      "name": "Permit of the Ministry of Industry and Trade",
     }
   ],
   "participants": [
     {
-      "name": "gov_rus_border_service",
+      "name": "gov_border_service",
       "id": "did:sov:VbNrngVsD113FC5gWsHsC2",
       "describe": {
-        "label": "Погран. Служба РФ",
+        "label": "Border Service",
         "website": "issuinggovernmentsite.org",
         "email": "credential_manager@issuinggovernmentsite.org"
       }
     },
     {
-      "name": "gov_rus_trade_ministry",
+      "name": "gov_trade_ministry",
       "id": "did:sov:46rZgNsTms48s7wz7RqwHy",
       "describe": {
-        "label": "Мин. торговли РФ",
+        "label": "Trading Ministry",
         "website": "issuinglabsite.com",
         "email": "credential_manager@issuinglabsite.com"
       }
@@ -56,7 +56,7 @@ doc = {
       "grant": ["trader"],
       "when": {
         "and": [
-          {"schema": "Разрешение Мин.пром.торга", "issuer": "gov_rus_trade_ministry"},
+          {"schema": "Permit of the Ministry of Industry and Trade", "issuer": "gov_trade_ministry"},
         ]
       }
     },
@@ -64,7 +64,7 @@ doc = {
       "grant": ["dual_purpose_cargo_licenser"],
       "when": {
         "any": [
-          {"schema": "Разрешение на лицензирование грузов 2-го назначения", "issuer": "gov_rus_border_service"},
+          {"schema": "Permission for licensing cargoes of the 2nd destination", "issuer": "gov_border_service"},
         ]
       }
     }
