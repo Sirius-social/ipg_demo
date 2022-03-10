@@ -80,6 +80,7 @@ STEWARD_DID = js['did']
 
 DKMS_NETWORK = 'test_network'
 TITLE = extra.pop('title', 'Demo Company Ltd.')
+ICON = extra.pop('icon', '/static/icons/logo.png')
 MASTER_SECRET_ID = extra.pop('master_secret_id')
 
 

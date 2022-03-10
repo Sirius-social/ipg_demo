@@ -10,7 +10,7 @@ from sirius_sdk.agent.wallet.abstract import NYMRole as ActorRole
 from sirius_sdk.agent.wallet.abstract.non_secrets import RetrieveRecordOptions
 from sirius_sdk.agent.wallet.abstract.anoncreds import AnonCredSchema
 from sirius_sdk.agent.ledger import Schema, SchemaFilters, CredentialDefinition
-from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError, WalletItemAlreadyExists
+from sirius_sdk.errors.indy_exceptions import AnoncredsMasterSecretDuplicateNameError, WalletItemAlreadyExists, WalletItemNotFound
 from sirius_sdk.agent.aries_rfc.feature_0036_issue_credential.messages import ProposedAttrib
 
 import settings
@@ -147,9 +147,11 @@ async def reset():
     # delete connections
     my_connections = await get_my_connections()
     for item in my_connections:
-        conn_id = build_connection_id(item.their.did, item.me.did)
-        await sirius_sdk.NonSecrets.delete_wallet_record(CONNECTIONS_TYPE, conn_id)
-        pass
+        for conn_id in [build_connection_id(item.their.did, item.me.did), item.their.did]:
+            try:
+                await sirius_sdk.NonSecrets.delete_wallet_record(CONNECTIONS_TYPE, conn_id)
+            except WalletItemNotFound:
+                pass
     pass
 
 

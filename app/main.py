@@ -153,6 +153,7 @@ async def index(request: Request):
         ws = ws.replace('http://', 'ws://').replace('https://', 'wss://')
     context = {
         'static': STATIC_CFG,
+        'icon': settings.ICON,
         'title': settings.TITLE,
         'identities': identities,
         'connections': connections,
