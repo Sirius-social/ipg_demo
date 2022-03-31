@@ -29,32 +29,32 @@ doc = {
   ],
   "cred_defs": [
       {
-        "id": "Gk6YNB9x5w6FwhNBUKjUEY:3:CL:8974:EXPORTER",
+        "id": "Nj3ejq7qjAKdtHDuS9d6Nm:3:CL:9164:EXPORTER",
         "name": "Exporter License"
       }
   ],
   "participants": [
     {
       "name": "gov_uzb_trading_ministry",
-      "id": "did:sov:Gk6YNB9x5w6FwhNBUKjUEY",
+      "id": "did:sov:Nj3ejq7qjAKdtHDuS9d6Nm",
       "describe": {
-        "label": "Мин. торговли Узбекистана",
+        "label": "Uzbekistan Trade Ministry",
         "website": "issuinggovernmentsite.org",
         "email": "credential_manager@issuinggovernmentsite.org"
       }
     },
     {
       "name": "gov_uzb_taxes_ministry",
-      "id": "did:sov:9MG2vmFLem8p4VBmcu3DRV",
+      "id": "did:sov:2yWjzFtsDeFn8CJxZURwvN",
       "describe": {
-        "label": "Налоговая служба респ. Узбекистан",
+        "label": "Uzbekistan Taxes Ministry",
         "website": "issuinglabsite.com",
         "email": "credential_manager@issuinglabsite.com"
       }
     },
     {
       "name": "uzb_sulfur_manufacturer",
-      "id": "did:sov:Hzp6tiXwVbTwdU8eRWiN2M",
+      "id": "did:sov:PsEdPi5wHfHyJEEyCUJnni",
       "describe": {
         "label": "JSC UZBEKNEFTEGAZ",
         "website": "issuinggovernmentsite.org",
@@ -81,7 +81,7 @@ doc = {
       "grant": ["licenser"],
       "when": {
         "any": [
-          {"id": "did:sov:Hzp6tiXwVbTwdU8eRWiN2M"}
+          {"id": "did:sov:PsEdPi5wHfHyJEEyCUJnni"}
         ]
       }
     },

@@ -23,7 +23,7 @@ from app.settings import URL_STATIC
 from didcomm.const import MSG_TYP_GOSSYP, MSG_TYP_TRACE_RESP
 from operations import *
 from machine_readable_govs.uzbekistan import doc as mrg_uzbekistan
-from machine_readable_govs.russia import doc as mrg_russia
+from machine_readable_govs.turkey import doc as mrg_turkey
 
 
 app = FastAPI()
@@ -180,7 +180,7 @@ async def index(request: Request):
         'gossyp_demo': GOSSYP_DEMO,
         'auras_my_connections': AURAS_MY_CONNECTIONS,
         'mrg_choices': {
-            mrg_russia['name']: mrg_russia,
+            mrg_turkey['name']: mrg_turkey,
             mrg_uzbekistan['name']: mrg_uzbekistan
         }
     }
